@@ -4,3 +4,6 @@ __pycache__/
 *.pyc
 # Atech SDK build output
 atech/firmware/build/
+atech/crab_rig/build/
+atech/servo_test/build/
+atech/crab_rig/rig_log.txt

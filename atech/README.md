@@ -17,7 +17,7 @@ the legs and a **lid** that closes it. Both come from Atech Atelier's "Sesame wa
 |---|---|
 | Firmware (`firmware/project.yaml`) | Builds with the Atech SDK and runs on the SDK's emulated board: all modules start, every move plays |
 | Walking | Run in simulation (emulated board + MuJoCo): the motion sensor holds the walk within about 20° over ten cycles |
-| Servo driver (`sg90_pair`) | Has driven an SG90 on a real Atech 14-port board |
+| Servo driver (`mg90s_pair`) | MG90S pulse range (500–2400 µs). Builds and runs on the emulated board; the earlier SG90 version drove an SG90 on a real 14-port board. **Not yet tried with MG90S on a board** |
 | Deck and lid (v4) | Pass Atech Atelier's fit check in CAD. **Not yet printed or assembled** |
 
 Print and test-fit the deck on the frame, with the servos in, before you print more than one set.
@@ -34,15 +34,16 @@ Print and test-fit the deck on the frame, with the servos in, before you print m
 | Arduino IDE | `pip install atech`, then `atech upload` |
 
 The moves are Sesame's own. `firmware/make_firmware.py` reads them out of this repository's
-[`firmware/movement-sequences.h`](../firmware/movement-sequences.h) and sends each servo the same pulse
-Sesame's firmware would (0–180° → 732–2929 µs).
+[`firmware/movement-sequences.h`](../firmware/movement-sequences.h) and sends each servo the same angle
+Sesame's firmware would, as an MG90S pulse: 0–180° → 500–2400 µs. (Sesame's own firmware uses 732–2929 µs,
+which drives an MG90S into its end stop above about 137°.)
 
 ## Parts
 
 **Printed (13):** Sesame's internal frame, bottom cover, femurs L1 L2 R1 R2 and feet L3 L4 R3 R4, plus
 deck part 1, deck part 2 and the lid. All 13 are in [`print/stl/`](print/stl/), turned the right way up.
 
-**Hardware:** 8 × SG90 or MG90S servos · Atech 14-port board · Atech USB-C module · Atech motion sensor module ·
+**Hardware:** 8 × MG90S servos (metal gear, 180°) · Atech 14-port board · Atech USB-C module · Atech motion sensor module ·
 Atech screen module with its cable · 6 × M2×8 pan-head screws · 3 × M2×10 countersunk screws ·
 male-to-male jumper wires · a 5 V 3 A supply for the servos · superglue (CA).
 
@@ -148,7 +149,7 @@ atech/
 ├── firmware/
 │   ├── project.yaml            the firmware: modules, ports, code (written by make_firmware.py)
 │   ├── make_firmware.py        Sesame's movement-sequences.h -> project.yaml
-│   └── my_modules/sg90_pair/   two hobby servos per port, 50 Hz LEDC (8 servos per board)
+│   └── my_modules/mg90s_pair/  two MG90S servos per port, 50 Hz LEDC (8 servos per board)
 ├── print/
 │   ├── stl/                    all 13 parts, print orientation
 │   ├── gcode/                  sliced for H2S, H2D, X2D, P2S (PLA)

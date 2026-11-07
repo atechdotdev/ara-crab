@@ -1,4 +1,4 @@
-# Simulation data for `sg90_pair`: not an Atech module, two servo plugs on jumper wires
+# Simulation data for `mg90s_pair`: not an Atech module, two servo plugs on jumper wires
 # pushed into a port's header. The geometry is the two 3-pin jumper plugs (2.54 mm
 # Dupont housings), not the servos; the servos are part of the robot's own model.
 # Asset frame: metres, origin at the centre of the bottom face, +z up, +x along the port.

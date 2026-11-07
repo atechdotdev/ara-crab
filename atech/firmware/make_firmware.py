@@ -5,8 +5,9 @@
 The moves are read straight out of Sesame's firmware/movement-sequences.h (Apache-2.0,
 Dorian Todd): each run...() function is played through - its
 setServoAngle() calls, delays, loops and nested runStandPose() - and stored as keyframes.
-The firmware plays them without blocking, sends each servo the pulse Sesame's own
-firmware would (0..180 deg -> 732..2929 us), and draws Pip's face for each move.
+The firmware plays them without blocking, sends each servo the angle Sesame's own
+firmware would, mapped to the MG90S's own pulse range (0..180 deg -> 500..2400 us),
+and draws Pip's face for each move.
 """
 from __future__ import annotations
 
@@ -97,7 +98,7 @@ board: 14port
 # Sesame (Dorian Todd's eight-servo quadruped, Apache-2.0) with an Atech 14-port board:
 # Atech Atelier's "Sesame walker" (Atelier 0.1.3). Sesame's frame, servos and legs are
 # unchanged; a deck in place of its top cover holds the board flat over the legs, its centre
-# 8 mm ahead of the hip axes. The servos (MG90S, 180 deg) plug straight into the ports on
+# 8 mm ahead of the hip axes. The servos (8 x MG90S, 180 deg) plug straight into the ports on
 # jumper wires, two per port, run under the board through the spine:
 #   port 2: L1 (front-left hip) on Line A, L3 (its knee) on Line B
 #   port 3: R1 / R3 (front-right)    port 4: L2 / L4 (rear-left)    port 5: R2 / R4 (rear-right)
@@ -109,10 +110,10 @@ board: 14port
 # on port 13.
 modules_path: ./my_modules
 modules:
-  - {id: sg90_pair,  instance: fl,    port: 2}
-  - {id: sg90_pair,  instance: fr,    port: 3}
-  - {id: sg90_pair,  instance: bl,    port: 4}
-  - {id: sg90_pair,  instance: br,    port: 5}
+  - {id: mg90s_pair, instance: fl,    port: 2}
+  - {id: mg90s_pair, instance: fr,    port: 3}
+  - {id: mg90s_pair, instance: bl,    port: 4}
+  - {id: mg90s_pair, instance: br,    port: 5}
   - {id: st7735_tft, instance: face,  ports: [10, 11]}
   - {id: icm40608,   instance: imu,   port: 13}
 """
@@ -121,16 +122,17 @@ modules:
 GLOBALS_HEAD = r"""
 // ---- the servos: Sesame's channel order, each on its port line ----
 enum { R1, R2, L1, L2, R4, R3, L3, L4 };
-static Sg90Pair* const PAIR[8] = {&fr, &br, &fl, &bl, &br, &fr, &fl, &bl};
+static Mg90sPair* const PAIR[8] = {&fr, &br, &fl, &bl, &br, &fr, &fl, &bl};
 static const uint8_t LINE[8]   = {0,   0,   0,   0,   1,   1,   1,   1};
 static int8_t subtrim[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 static uint8_t servoDeg[8];
 static int rawDeg[8];                 // what the move asked for, before steering
-// Sesame's mapping: 0..180 deg -> 732..2929 us (its MIN_PULSE / MAX_PULSE)
+// MG90S: 0..180 deg -> 500..2400 us (Mg90sPair::write). Sesame's own 732..2929 us would push
+// an MG90S past 2400 us above 137 deg.
 static void writeServo(uint8_t ch, float deg) {
   deg = constrain(deg + subtrim[ch], 0.0f, 180.0f);
   servoDeg[ch] = (uint8_t)(deg + 0.5f);
-  PAIR[ch]->writeUs(LINE[ch], 732 + (int)(deg * (2929 - 732) / 180.0f + 0.5f));
+  PAIR[ch]->write(LINE[ch], deg);
 }
 
 // Steering. Sesame's walk on its own drifts to the left (in MuJoCo, on Sesame's own model

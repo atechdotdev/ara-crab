@@ -71,8 +71,8 @@ The deck and lid have an opening at every servo port, **on both sides**: ports 2
 10–13 on the left (−X). Each opening is half in the lid and half in the deck:
 
 - **A slot** at each port, 16.6 × 7.2 mm, so the jumpers go straight out of the header.
-- **An 8 mm notch** under each slot, down to the gap under the board: the SG90 leads come up the spine, run under
-  the board and leave here. An SG90 plug (7.6 × 2.6 mm) fits through.
+- **An 8 mm notch** under each slot, down to the gap under the board: the servo leads come up the spine, run under
+  the board and leave here. An MG90S plug (the same 3-pin plug as an SG90, 7.6 × 2.6 mm) fits through.
 - **USB-C** (port 8, at the back): the opening reaches 5 mm lower, through the seam.
 
 On the left side a lid-screw post stands just inside the wall behind port 12's slot, so port 12's notch sits 2 mm

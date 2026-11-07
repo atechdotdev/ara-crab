@@ -1,0 +1,22 @@
+id: servo_probe
+name: "Servo probe: a port's two lines, for testing servos one at a time"
+category: motor
+interface: gpio
+size: 1
+description: |
+  Not an Atech module: holds a port's Line A and Line B pins so the test firmware can
+  drive one hobby servo at a time on a single shared LEDC channel.
+driver:
+  header: servo_probe.h
+  source: servo_probe.cpp
+  class_name: ServoProbe
+templates:
+  globals: |
+    ServoProbe {{ instance }}({{ pin_a }}, {{ pin_b }});
+  setup: ""
+  loop: ""
+actions: []
+events: []
+lib_deps: []
+usage: |
+  int a = {{ instance }}.pin(0), b = {{ instance }}.pin(1);

@@ -1,0 +1,290 @@
+name: crab_rig
+board: 14port
+# Servo rig for Atech-crab (Sesame's 8 joints). Driven by the mapping page (rig_server.py):
+#   pulse  "10 1500 FR hip"  -> port 10's Line A (pin 5) to a 1500 us pulse, screen shows "FR hip"
+#   pulse  "g47 1500 FR hip" -> a raw GPIO instead of a port (for a port the pin map has wrong)
+#   wiggle "10 1500 FR hip"  -> +-150 us around 1500 for 2 s, then hold 1500
+#   limp   "10" / "all"      -> stop pulsing: the servo goes limp
+#   label  "any text"        -> show text on the screen
+#   stand                    -> every joint to its neutral angle, one after another
+#   check                    -> all limp, then each port's pin 5: servo seen / nothing / held high
+#   move   "walk" / "stop"   -> play one of Sesame's moves on the mapped joints (walk, back, left, right,
+#                               stand, rest, wave, dance, ...); "stop" ends it where it is
+#   speed  "100"             -> move speed in % of Sesame's timing (frameDelay); default 60
+#   amp    "60"              -> step size: every move scaled around the stand pose, in % of Sesame's
+#   mdelay "20"              -> ms between servo writes in a frame (Sesame's motorCurrentDelay)
+# The joint map and neutral angles sit between CONFIG BEGIN / END below; the mapping page's
+# Save button rewrites them and flashes the board.
+# MG90S servos: 0..180 deg = 500..2400 us, and no pulse outside that. 8 servos at most (8 LEDC channels).
+# A "hello" event every 2 s; a 3 s watchdog restarts the board if the loop stalls.
+modules_path: ../servo_test/my_modules
+modules:
+  - {id: st7735_tft,  instance: tft, ports: [9, 10]}
+  - {id: servo_probe, instance: p1,  port: 1}
+  - {id: servo_probe, instance: p2,  port: 2}
+  - {id: servo_probe, instance: p3,  port: 3}
+  - {id: servo_probe, instance: p4,  port: 4}
+  - {id: servo_probe, instance: p5,  port: 5}
+  - {id: servo_probe, instance: p6,  port: 6}
+  - {id: servo_probe, instance: p7,  port: 7}
+  - {id: servo_probe, instance: p11, port: 11}
+  - {id: servo_probe, instance: p13, port: 13}
+  - {id: servo_probe, instance: p14, port: 14}
+code:
+  globals: |
+    #include <esp_system.h>
+    #include <esp_task_wdt.h>
+
+    static ServoProbe* const PROBES[] = {&p1, &p2, &p3, &p4, &p5, &p6, &p7, &p11, &p13, &p14};
+    static const int PORTS[] = {1, 2, 3, 4, 5, 6, 7, 11, 13, 14};
+    static const int NPORTS = 10;
+    static const int EXTRA_GPIOS[] = {47, 48};      // free GPIOs no port in the map uses
+
+    // CONFIG BEGIN (written by rig_server.py)
+    static const char* const JOINT_NAMES[8] = {"FL hip", "FL knee", "FR hip", "FR knee", "RL hip", "RL knee", "RR hip", "RR knee"};
+    static const char* const JOINT_PINS[8] = {"7", "5", "11", "2", "4", "3", "1", "13"};
+    static const int JOINT_NEUTRAL_US[8] = {1732, 1270, 2022, 1092, 1251, 1500, 1171, 985};
+    static const int JOINT_US0[8] = {500, 500, 500, 500, 500, 500, 500, 500};
+    static const int JOINT_MIN_US[8] = {600, 600, 600, 600, 600, 600, 600, 600};
+    static const int JOINT_MAX_US[8] = {2400, 2400, 2400, 2400, 2400, 2400, 2400, 2400};
+    static const int JOINT_US180[8] = {2400, 2400, 2400, 2400, 2400, 2400, 2400, 2400};
+    // CONFIG END
+
+    // ---- Sesame's moves. Their channel order is R1, R2, L1, L2, R4, R3, L3, L4; SES2J says which of
+    // our joints (JOINT_NAMES order above) each one is, so a move lands on the port you mapped.
+    enum { R1, R2, L1, L2, R4, R3, L3, L4 };
+    static const uint8_t SES2J[8] = {2, 6, 0, 4, 7, 3, 1, 5};
+    // ---- Sesame's moves as keyframes: {hold ms, n, servo, deg, servo, deg, ...}, ... , -1 ----
+    static const int16_t MOVE_REST[] = {300, 8, 0, 90, 1, 90, 2, 90, 3, 90, 4, 90, 5, 90, 6, 90, 7, 90, -1};
+    static const int16_t MOVE_STAND[] = {300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_WAVE[] = {200, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, 200, 4, 4, 80, 6, 180, 3, 90, 0, 100, 300, 1, 6, 180, 300, 1, 6, 180, 300, 1, 6, 100, 300, 1, 6, 180, 300, 1, 6, 100, 300, 1, 6, 180, 300, 1, 6, 100, 300, 1, 6, 180, 300, 1, 6, 100, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_DANCE[] = {300, 8, 0, 90, 1, 90, 2, 90, 3, 90, 4, 160, 5, 160, 6, 10, 7, 10, 300, 4, 4, 115, 5, 115, 6, 10, 7, 10, 300, 4, 4, 160, 5, 160, 6, 65, 7, 65, 300, 4, 4, 115, 5, 115, 6, 10, 7, 10, 300, 4, 4, 160, 5, 160, 6, 65, 7, 65, 300, 4, 4, 115, 5, 115, 6, 10, 7, 10, 300, 4, 4, 160, 5, 160, 6, 65, 7, 65, 300, 4, 4, 115, 5, 115, 6, 10, 7, 10, 300, 4, 4, 160, 5, 160, 6, 65, 7, 65, 300, 4, 4, 115, 5, 115, 6, 10, 7, 10, 300, 4, 4, 160, 5, 160, 6, 65, 7, 65, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_SWIM[] = {400, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 90, 5, 90, 6, 90, 7, 90, 400, 4, 0, 90, 1, 90, 2, 90, 3, 90, 400, 4, 0, 135, 1, 45, 2, 45, 3, 135, 400, 4, 0, 90, 1, 90, 2, 90, 3, 90, 400, 4, 0, 135, 1, 45, 2, 45, 3, 135, 400, 4, 0, 90, 1, 90, 2, 90, 3, 90, 400, 4, 0, 135, 1, 45, 2, 45, 3, 135, 400, 4, 0, 90, 1, 90, 2, 90, 3, 90, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_POINT[] = {2000, 8, 3, 90, 0, 135, 1, 100, 7, 180, 2, 25, 6, 145, 4, 80, 5, 170, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_PUSHUP[] = {200, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, 500, 4, 2, 0, 0, 180, 6, 90, 5, 90, 600, 2, 6, 0, 5, 180, 500, 2, 6, 90, 5, 90, 600, 2, 6, 0, 5, 180, 500, 2, 6, 90, 5, 90, 600, 2, 6, 0, 5, 180, 500, 2, 6, 90, 5, 90, 600, 2, 6, 0, 5, 180, 500, 2, 6, 90, 5, 90, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_BOW[] = {200, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, 600, 8, 2, 0, 0, 180, 6, 0, 5, 180, 3, 180, 1, 0, 4, 0, 7, 180, 3000, 2, 6, 90, 5, 90, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_CUTE[] = {200, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, 200, 8, 3, 160, 1, 20, 4, 180, 7, 0, 2, 0, 0, 180, 6, 180, 5, 0, 300, 2, 4, 180, 7, 45, 300, 2, 4, 135, 7, 0, 300, 2, 4, 180, 7, 45, 300, 2, 4, 135, 7, 0, 300, 2, 4, 180, 7, 45, 300, 2, 4, 135, 7, 0, 300, 2, 4, 180, 7, 45, 300, 2, 4, 135, 7, 0, 300, 2, 4, 180, 7, 45, 300, 2, 4, 135, 7, 0, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_FREAKY[] = {200, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, 200, 6, 2, 0, 0, 180, 3, 180, 1, 0, 4, 90, 5, 0, 400, 1, 5, 25, 400, 1, 5, 0, 400, 1, 5, 25, 400, 1, 5, 0, 400, 1, 5, 25, 400, 1, 5, 0, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_WORM[] = {200, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, 200, 8, 0, 180, 1, 0, 2, 0, 3, 180, 4, 90, 5, 90, 6, 90, 7, 90, 300, 4, 5, 45, 6, 135, 4, 45, 7, 135, 300, 4, 5, 135, 6, 45, 4, 135, 7, 45, 300, 4, 5, 45, 6, 135, 4, 45, 7, 135, 300, 4, 5, 135, 6, 45, 4, 135, 7, 45, 300, 4, 5, 45, 6, 135, 4, 45, 7, 135, 300, 4, 5, 135, 6, 45, 4, 135, 7, 45, 300, 4, 5, 45, 6, 135, 4, 45, 7, 135, 300, 4, 5, 135, 6, 45, 4, 135, 7, 45, 300, 4, 5, 45, 6, 135, 4, 45, 7, 135, 300, 4, 5, 135, 6, 45, 4, 135, 7, 45, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_SHAKE[] = {200, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, 200, 6, 0, 135, 2, 45, 6, 90, 5, 90, 3, 90, 1, 90, 300, 2, 4, 45, 7, 135, 300, 2, 4, 0, 7, 180, 300, 2, 4, 45, 7, 135, 300, 2, 4, 0, 7, 180, 300, 2, 4, 45, 7, 135, 300, 2, 4, 0, 7, 180, 300, 2, 4, 45, 7, 135, 300, 2, 4, 0, 7, 180, 300, 2, 4, 45, 7, 135, 300, 2, 4, 0, 7, 180, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_SHRUG[] = {200, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, 1000, 4, 5, 90, 4, 90, 6, 90, 7, 90, 1500, 4, 5, 0, 4, 180, 6, 180, 7, 0, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_DEAD[] = {200, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, 300, 4, 5, 90, 4, 90, 6, 90, 7, 90, -1};
+    static const int16_t MOVE_CRAB[] = {200, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, 300, 8, 0, 90, 1, 90, 2, 90, 3, 90, 4, 45, 5, 135, 6, 0, 7, 180, 300, 4, 4, 0, 5, 180, 6, 45, 7, 135, 300, 4, 4, 45, 5, 135, 6, 0, 7, 180, 300, 4, 4, 0, 5, 180, 6, 45, 7, 135, 300, 4, 4, 45, 5, 135, 6, 0, 7, 180, 300, 4, 4, 0, 5, 180, 6, 45, 7, 135, 300, 4, 4, 45, 5, 135, 6, 0, 7, 180, 300, 4, 4, 0, 5, 180, 6, 45, 7, 135, 300, 4, 4, 45, 5, 135, 6, 0, 7, 180, 300, 4, 4, 0, 5, 180, 6, 45, 7, 135, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_WALK[] = {100, 4, 5, 135, 6, 45, 1, 100, 2, 25, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 90, 4, 0, 0, 180, 100, 2, 1, 45, 2, 90, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 90, 2, 0, 100, 2, 3, 135, 0, 90, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 90, 4, 0, 0, 180, 100, 2, 1, 45, 2, 90, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 90, 2, 0, 100, 2, 3, 135, 0, 90, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 90, 4, 0, 0, 180, 100, 2, 1, 45, 2, 90, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 90, 2, 0, 100, 2, 3, 135, 0, 90, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 90, 4, 0, 0, 180, 100, 2, 1, 45, 2, 90, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 90, 2, 0, 100, 2, 3, 135, 0, 90, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 90, 4, 0, 0, 180, 100, 2, 1, 45, 2, 90, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 90, 2, 0, 100, 2, 3, 135, 0, 90, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 90, 4, 0, 0, 180, 100, 2, 1, 45, 2, 90, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 90, 2, 0, 100, 2, 3, 135, 0, 90, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 90, 4, 0, 0, 180, 100, 2, 1, 45, 2, 90, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 90, 2, 0, 100, 2, 3, 135, 0, 90, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 90, 4, 0, 0, 180, 100, 2, 1, 45, 2, 90, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 90, 2, 0, 100, 2, 3, 135, 0, 90, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 90, 4, 0, 0, 180, 100, 2, 1, 45, 2, 90, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 90, 2, 0, 100, 2, 3, 135, 0, 90, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 90, 4, 0, 0, 180, 100, 2, 1, 45, 2, 90, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 90, 2, 0, 100, 2, 3, 135, 0, 90, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_BACK[] = {100, 0, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 135, 4, 0, 0, 90, 100, 2, 1, 90, 2, 0, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 45, 2, 90, 100, 2, 3, 90, 0, 180, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 135, 4, 0, 0, 90, 100, 2, 1, 90, 2, 0, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 45, 2, 90, 100, 2, 3, 90, 0, 180, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 135, 4, 0, 0, 90, 100, 2, 1, 90, 2, 0, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 45, 2, 90, 100, 2, 3, 90, 0, 180, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 135, 4, 0, 0, 90, 100, 2, 1, 90, 2, 0, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 45, 2, 90, 100, 2, 3, 90, 0, 180, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 135, 4, 0, 0, 90, 100, 2, 1, 90, 2, 0, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 45, 2, 90, 100, 2, 3, 90, 0, 180, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 135, 4, 0, 0, 90, 100, 2, 1, 90, 2, 0, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 45, 2, 90, 100, 2, 3, 90, 0, 180, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 135, 4, 0, 0, 90, 100, 2, 1, 90, 2, 0, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 45, 2, 90, 100, 2, 3, 90, 0, 180, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 135, 4, 0, 0, 90, 100, 2, 1, 90, 2, 0, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 45, 2, 90, 100, 2, 3, 90, 0, 180, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 135, 4, 0, 0, 90, 100, 2, 1, 90, 2, 0, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 45, 2, 90, 100, 2, 3, 90, 0, 180, 100, 2, 5, 135, 6, 0, 100, 4, 7, 135, 3, 135, 4, 0, 0, 90, 100, 2, 1, 90, 2, 0, 100, 2, 4, 45, 7, 180, 100, 4, 5, 180, 6, 45, 1, 45, 2, 90, 100, 2, 3, 90, 0, 180, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_LEFT[] = {100, 2, 5, 135, 7, 135, 100, 2, 0, 180, 3, 180, 100, 2, 5, 180, 7, 180, 100, 2, 0, 135, 3, 135, 100, 2, 4, 45, 6, 45, 100, 2, 1, 90, 2, 90, 100, 2, 4, 0, 6, 0, 100, 2, 1, 45, 2, 45, 100, 2, 5, 135, 7, 135, 100, 2, 0, 180, 3, 180, 100, 2, 5, 180, 7, 180, 100, 2, 0, 135, 3, 135, 100, 2, 4, 45, 6, 45, 100, 2, 1, 90, 2, 90, 100, 2, 4, 0, 6, 0, 100, 2, 1, 45, 2, 45, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t MOVE_RIGHT[] = {100, 2, 4, 45, 6, 45, 100, 2, 1, 0, 2, 0, 100, 2, 4, 0, 6, 0, 100, 2, 1, 45, 2, 45, 100, 2, 5, 135, 7, 135, 100, 2, 0, 90, 3, 90, 100, 2, 5, 180, 7, 180, 100, 2, 0, 135, 3, 135, 100, 2, 4, 45, 6, 45, 100, 2, 1, 0, 2, 0, 100, 2, 4, 0, 6, 0, 100, 2, 1, 45, 2, 45, 100, 2, 5, 135, 7, 135, 100, 2, 0, 90, 3, 90, 100, 2, 5, 180, 7, 180, 100, 2, 0, 135, 3, 135, 300, 8, 0, 135, 1, 45, 2, 45, 3, 135, 4, 0, 5, 180, 6, 0, 7, 180, -1};
+    static const int16_t* const MOVE_DATA[] = {MOVE_REST, MOVE_STAND, MOVE_WAVE, MOVE_DANCE, MOVE_SWIM, MOVE_POINT, MOVE_PUSHUP, MOVE_BOW, MOVE_CUTE, MOVE_FREAKY, MOVE_WORM, MOVE_SHAKE, MOVE_SHRUG, MOVE_DEAD, MOVE_CRAB, MOVE_WALK, MOVE_BACK, MOVE_LEFT, MOVE_RIGHT};
+    static const char* const MOVE_NAMES[] = {"rest", "stand", "wave", "dance", "swim", "point", "pushup", "bow", "cute", "freaky", "worm", "shake", "shrug", "dead", "crab", "walk", "back", "left", "right"};
+    static const uint8_t MOVE_MOOD[] = {0, 1, 2, 3, 2, 1, 5, 2, 3, 6, 6, 2, 4, 0, 5, 5, 5, 5, 5};
+    static const int NMOVES = 19;
+    static int moveIndex(const char* n) { for (int i = 0; i < NMOVES; i++) if (!strcmp(n, MOVE_NAMES[i])) return i; return -1; }
+    static int moveSpeed = 60, motorDelay = 60, moveAmp = 60;   // speed and step size in % of Sesame's   // 60 ms: gentler than Sesame's 20 on a weak supply
+    static const int16_t* kf = nullptr;
+    static int curMove = -1;
+    static unsigned long nextKey = 0;
+
+    static int chPin[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
+    static int chUs[8];
+    // a running wiggle
+    static int wigCh = -1;
+    static int wigCenter = 1500;
+    static unsigned long wigStart = 0, wigNext = 0;
+
+    static void event(const char* key, const char* v) {
+      Serial.printf("{\"type\":\"event\",\"payload\":{\"event_type\":\"state\",\"key\":\"%s\",\"value\":\"%s\"}}\n", key, v);
+    }
+    static void centered(const char* txt, int y, int size, uint16_t col) {
+      int w = (int)strlen(txt) * 6 * size;
+      tft.displayText(txt, max(0, (160 - w) / 2), y, size, col);
+    }
+    static int fit(const char* txt, int maxSize) {
+      return max(1, min(maxSize, 156 / (6 * max(1, (int)strlen(txt)))));
+    }
+    static void screen(const char* top, const char* big, const char* bottom, uint16_t col) {
+      tft.clear();
+      centered(top, 4, 1, 0x8410);
+      int sz = fit(big, 4);
+      centered(big, 38 - 4 * sz, sz, col);
+      centered(bottom, 68, 1, ST7735_TFT::COLOR_WHITE);
+      tft.display();
+    }
+    // "10" -> port 10's Line A; "g47" -> GPIO 47. -1 if unknown.
+    static int pinFor(const String& tok) {
+      if (tok.startsWith("g") || tok.startsWith("G")) {
+        int g = tok.substring(1).toInt();
+        for (int e : EXTRA_GPIOS) if (e == g) return g;
+        for (int i = 0; i < NPORTS; i++) for (int c = 0; c < 2; c++) if (PROBES[i]->pin(c) == g) return g;
+        return -1;
+      }
+      int n = tok.toInt();
+      for (int i = 0; i < NPORTS; i++) if (PORTS[i] == n) return PROBES[i]->pin(0);
+      return -1;
+    }
+    static int chanFor(int pin, bool create) {
+      for (int c = 0; c < 8; c++) if (chPin[c] == pin) return c;
+      if (!create) return -1;
+      for (int c = 0; c < 8; c++) if (chPin[c] < 0) {
+        ledcSetup(c, 50, 14); ledcWrite(c, 0); ledcAttachPin(pin, c);
+        chPin[c] = pin; return c;
+      }
+      return -1;
+    }
+    static void writeUs(int c, int us) {
+      us = constrain(us, 500, 2400);              // MG90S range
+      chUs[c] = us;
+      ledcWrite(c, (uint32_t)((uint64_t)us * 16383 / 20000));
+    }
+    // Sesame's stand, per channel (R1, R2, L1, L2, R4, R3, L3, L4). Each joint is shifted so that this
+    // pose lands on its standing pulse (JOINT_NEUTRAL_US): Sesame's subtrim, set from the page.
+    static const float SES_STAND_DEG[8] = {135, 45, 45, 135, 0, 180, 0, 180};
+    static int sesUs(int j, float deg) {
+      return JOINT_US0[j] + (int)(deg * (JOINT_US180[j] - JOINT_US0[j]) / 180.0f + 0.5f);
+    }
+    static void sesWrite(int sesCh, float deg) {
+      int j = SES2J[sesCh];
+      int pin = pinFor(String(JOINT_PINS[j]));
+      int c = pin < 0 ? -1 : chanFor(pin, true);
+      if (c < 0) return;
+      bool fresh = chUs[c] == 0;                     // a limp servo switching on pulls the most current
+      int trim = JOINT_NEUTRAL_US[j] - sesUs(j, SES_STAND_DEG[sesCh]);
+      deg = SES_STAND_DEG[sesCh] + (deg - SES_STAND_DEG[sesCh]) * moveAmp / 100.0f;   // smaller steps around the stand
+      int us = sesUs(j, deg) + trim;
+      writeUs(c, constrain(us, JOINT_MIN_US[j], JOINT_MAX_US[j]));
+      if (fresh) { esp_task_wdt_reset(); delay(150); }
+    }
+    static void limpCh(int c) {
+      if (c < 0 || chPin[c] < 0) return;
+      if (wigCh == c) wigCh = -1;
+      ledcWrite(c, 0); ledcDetachPin(chPin[c]); pinMode(chPin[c], INPUT); chPin[c] = -1; chUs[c] = 0;
+    }
+    // "TOK US label words" -> tok, us, label
+    static void parse(const String& v, String& tok, float& deg, String& label) {
+      String s = v; s.trim();
+      int a = s.indexOf(' ');
+      tok = a < 0 ? s : s.substring(0, a);
+      String rest = a < 0 ? "" : s.substring(a + 1); rest.trim();
+      int b = rest.indexOf(' ');
+      deg = (b < 0 ? rest : rest.substring(0, b)).toFloat();
+      label = b < 0 ? "" : rest.substring(b + 1);
+    }
+  setup: |
+    esp_task_wdt_init(3, true);
+    esp_task_wdt_add(NULL);
+    esp_reset_reason_t r = esp_reset_reason();
+    const char* why = r == ESP_RST_BROWNOUT ? "brownout" : r == ESP_RST_POWERON ? "power on" : r == ESP_RST_SW ? "software"
+                    : r == ESP_RST_PANIC ? "crash" : (r == ESP_RST_INT_WDT || r == ESP_RST_TASK_WDT || r == ESP_RST_WDT) ? "watchdog" : "other";
+    event("rig", (String("boot, last reset: ") + why).c_str());
+    screen("ATECH CRAB", r == ESP_RST_BROWNOUT ? "BROWNOUT" : "RIG", r == ESP_RST_BROWNOUT ? "supply dipped: servos need 5 V 4 A" : "open the mapping page",
+           r == ESP_RST_BROWNOUT ? ST7735_TFT::COLOR_RED : ST7735_TFT::COLOR_GREEN);
+  loop: |
+    esp_task_wdt_reset();
+    static unsigned long helloAt = 0;
+    if ((long)(millis() - helloAt) >= 0) {
+      helloAt = millis() + 2000;
+      int used = 0; for (int c = 0; c < 8; c++) if (chPin[c] >= 0) used++;
+      char v[48]; snprintf(v, sizeof v, "hello, up %lus, %d servos on", millis() / 1000, used);
+      event("rig", v);
+    }
+
+    if (atech_action == "pulse" || atech_action == "wiggle") {
+      String tok, label; float deg; parse(atech_value, tok, deg, label);
+      int pin = pinFor(tok);
+      int c = pin < 0 ? -1 : chanFor(pin, true);
+      if (pin < 0) atechFail("unknown port");
+      else if (c < 0) atechFail("8 servos already on: limp one first");
+      else {
+        if (atech_action == "wiggle") { wigCh = c; wigCenter = (int)deg; wigStart = millis(); wigNext = millis(); }
+        else { if (wigCh == c) wigCh = -1; writeUs(c, (int)deg); }
+        char top[32], bottom[40];
+        if (tok.startsWith("g") || tok.startsWith("G")) snprintf(top, sizeof top, "GPIO %d", pin);
+        else snprintf(top, sizeof top, "%s", label.c_str());     // the joint name on top, the port big
+        if (!(tok.startsWith("g") || tok.startsWith("G"))) label = String("PORT ") + tok;
+        snprintf(bottom, sizeof bottom, atech_action == "wiggle" ? "wiggle around %d us" : "%d us", (int)deg);
+        screen(top, label.length() ? label.c_str() : tok.c_str(), bottom, ST7735_TFT::COLOR_YELLOW);
+      }
+      atechDone();
+    }
+    if (atech_action == "limp") {
+      String v = atech_value; v.trim();
+      if (v == "all") { kf = nullptr; for (int c = 0; c < 8; c++) limpCh(c); screen("ALL SERVOS", "LIMP", "", ST7735_TFT::COLOR_WHITE); }
+      else {
+        int pin = pinFor(v);
+        if (pin < 0) atechFail("unknown port");
+        else limpCh(chanFor(pin, false));
+      }
+      atechDone();
+    }
+    if (atech_action == "stand") {
+      // one joint every 150 ms, so they don't all start at once and dip the supply
+      for (int j = 0; j < 8; j++) {
+        int pin = pinFor(String(JOINT_PINS[j]));
+        int c = pin < 0 ? -1 : chanFor(pin, true);
+        if (c >= 0) writeUs(c, JOINT_NEUTRAL_US[j]);
+        esp_task_wdt_reset(); delay(150);
+      }
+      screen("ALL JOINTS", "STAND", "neutral angles", ST7735_TFT::COLOR_GREEN);
+      atechDone();
+    }
+    if (atech_action == "check") {
+      for (int c = 0; c < 8; c++) limpCh(c);
+      for (int i = 0; i < NPORTS; i++) {
+        int g = PROBES[i]->pin(0);
+        pinMode(g, OUTPUT); digitalWrite(g, LOW); delayMicroseconds(50); int l = digitalRead(g);
+        pinMode(g, INPUT_PULLUP); delay(2); int pu = digitalRead(g);
+        pinMode(g, INPUT_PULLDOWN); delay(2); int pd = digitalRead(g);
+        pinMode(g, INPUT);
+        // a servo input holds the line low against the pull-up; nothing lets it follow the pulls
+        const char* what = l ? "held" : (pu == 0 && pd == 0) ? "servo" : (pu == 1 && pd == 1) ? "high" : "none";
+        char v[24]; snprintf(v, sizeof v, "%d:%s", PORTS[i], what);
+        Serial.printf("{\"type\":\"event\",\"payload\":{\"event_type\":\"state\",\"key\":\"check\",\"value\":\"%s\"}}\n", v);
+      }
+      screen("WIRING", "CHECKED", "see the page", ST7735_TFT::COLOR_CYAN);
+      atechDone();
+    }
+    if (atech_action == "move") {
+      String v = atech_value; v.trim();
+      if (v == "stop") { kf = nullptr; screen("MOVE", "STOPPED", "", ST7735_TFT::COLOR_RED); }
+      else {
+        int m = moveIndex(v.c_str());
+        if (m < 0) atechFail("no such move");
+        else {
+          wigCh = -1; curMove = m; kf = MOVE_DATA[m]; nextKey = millis();
+          screen("SESAME", MOVE_NAMES[m], "", ST7735_TFT::COLOR_GREEN);
+          Serial.printf("{\"type\":\"event\",\"payload\":{\"event_type\":\"state\",\"key\":\"move\",\"value\":\"%s\"}}\n", MOVE_NAMES[m]);
+        }
+      }
+      atechDone();
+    }
+    if (atech_action == "speed") { moveSpeed = constrain(atech_value.toInt(), 20, 400); atechDone(); }
+    if (atech_action == "amp") { moveAmp = constrain(atech_value.toInt(), 10, 100); atechDone(); }
+    if (atech_action == "mdelay") { motorDelay = constrain(atech_value.toInt(), 0, 100); atechDone(); }
+    // play keyframes: {hold ms, n, servo, deg, ...}, -1; the servos of a frame one after another
+    if (kf != nullptr && (long)(millis() - nextKey) >= 0) {
+      if (kf[0] < 0) {
+        kf = nullptr;
+        Serial.printf("{\"type\":\"event\",\"payload\":{\"event_type\":\"state\",\"key\":\"move\",\"value\":\"%s done\"}}\n", MOVE_NAMES[curMove]);
+      } else {
+        int hold = kf[0], n = kf[1];
+        for (int i = 0; i < n; i++) {
+          sesWrite(kf[2 + 2 * i], kf[3 + 2 * i]);
+          if (motorDelay) { esp_task_wdt_reset(); delay(motorDelay); }
+        }
+        kf += 2 + 2 * n;
+        nextKey = millis() + hold * 100L / moveSpeed;
+      }
+    }
+    if (atech_action == "label") {
+      screen("", atech_value.c_str(), "", ST7735_TFT::COLOR_CYAN);
+      atechDone();
+    }
+
+    if (wigCh >= 0 && chPin[wigCh] >= 0 && (long)(millis() - wigNext) >= 0) {
+      float t = (millis() - wigStart) / 1000.0f;
+      if (t > 2.0f) { writeUs(wigCh, wigCenter); wigCh = -1; }
+      else {
+        float ramp = min(1.0f, t / 0.2f) * min(1.0f, (2.0f - t) / 0.2f);
+        writeUs(wigCh, wigCenter + (int)(ramp * 150 * sinf(2 * PI * 1.5f * t)));
+        wigNext = millis() + 20;
+      }
+    }

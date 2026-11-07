@@ -1,0 +1,402 @@
+name: servo_test
+board: 14port
+# Servo test for Atech-crab. Nothing moves until told. The screen (ports 1+2) shows what runs.
+#   atech send probe 13     -> port 13 for 5 s: Line A and Line B swing 70 <-> 110 deg, then limp
+#   atech send probe 13B    -> port 13, Line B only (13A: Line A only)
+#   atech send probe all    -> every port, 5 s each, one after the other
+#   atech send probe scan   -> every free GPIO, 2 s each, its number on the screen:
+#                              finds the pin a servo really sits on
+#   atech send probe check  -> each port's two lines: can the chip drive them, is anything pulling them
+#   atech send probe volts  -> the voltage on each ADC-capable line while driven high
+#   atech send probe legs   -> all 8 legs (Line A of 3,4,5,6,10,11,13,14) to 90, swing +-15 deg together 6 s, hold 90
+#   atech send probe legs 120 -> all 8 legs to 120 deg and hold
+#   atech send probe wave   -> all 8 legs in a travelling wave, +-30 deg, 15 s, then hold 90
+#   atech send probe try    -> cycle 5 patterns over all 8 legs, 10 s each, until stop
+#   atech send probe cycle  -> one leg at a time up and down for 3 s (3,10,4,11,5,13,6,14), the others at 90, looping until stop
+#   The right-side loop starts by itself 1.5 s after every boot.
+#   atech send probe right  -> ports 3,4,5,6,9,10,11,13,14 one at a time, Line A, 1 s each, looping (starts at boot)
+#   A "hello" heartbeat every 2 s; a 3 s watchdog restarts the board if the loop stalls.
+#   atech send probe find   -> passive: every free GPIO, is a servo input on it? (nothing moves)
+#   atech send probe stop
+# Two LEDC channels move from pin to pin, so only one port (or one GPIO) is pulsed at a time.
+modules_path: ./my_modules
+modules:
+  - {id: st7735_tft,  instance: tft, ports: [1, 2]}
+  - {id: servo_probe, instance: p3,  port: 3}
+  - {id: servo_probe, instance: p4,  port: 4}
+  - {id: servo_probe, instance: p5,  port: 5}
+  - {id: servo_probe, instance: p6,  port: 6}
+  - {id: servo_probe, instance: p7,  port: 7}
+  - {id: servo_probe, instance: p9,  port: 9}
+  - {id: servo_probe, instance: p10, port: 10}
+  - {id: servo_probe, instance: p11, port: 11}
+  - {id: servo_probe, instance: p13, port: 13}
+  - {id: servo_probe, instance: p14, port: 14}
+code:
+  globals: |
+    #include <esp_system.h>
+    #include <esp_task_wdt.h>
+    #include <driver/rtc_io.h>
+
+    static ServoProbe* const PROBES[] = {&p3, &p4, &p5, &p6, &p7, &p9, &p10, &p11, &p13, &p14};
+    static const int PORTS[] = {3, 4, 5, 6, 7, 9, 10, 11, 13, 14};
+    static const int NPORTS = 10;
+    // every GPIO not used by the screen (4, 5, 8, 9), USB (19, 20), flash or a boot strap (0, 3, 45, 46)
+    static const int SCAN[] = {1, 2, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21,
+                               35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 47, 48};
+    static const int NSCAN = sizeof(SCAN) / sizeof(SCAN[0]);
+
+    static int pins[2] = {-1, -1};        // LEDC channel c drives pins[c]
+    static int mode = 0;                  // 0 idle, 1 one port, 2 all ports, 3 scan
+    static int at = 0, swing = 0;         // which port / GPIO, which half of the swing
+    static unsigned long nextSwing = 0, endAt = 0;
+
+    static void event(const char* v) {
+      Serial.printf("{\"type\":\"event\",\"payload\":{\"event_type\":\"state\",\"key\":\"probe\",\"value\":\"%s\"}}\n", v);
+    }
+    // text that fits: the built-in font is 6 x 8 px per character at size 1
+    static void centered(const char* txt, int y, int size, uint16_t col) {
+      int w = (int)strlen(txt) * 6 * size;
+      tft.displayText(txt, max(0, (160 - w) / 2), y, size, col);
+    }
+    static int fitSize(const char* txt, int maxSize) {
+      int n = max(1, (int)strlen(txt));
+      return max(1, min(maxSize, 156 / (6 * n)));
+    }
+    static void show(const char* big, const char* small, uint16_t col) {
+      tft.clear();
+      int sz = fitSize(big, 4);
+      centered(big, 34 - 4 * sz, sz, col);
+      centered(small, 66, 1, ST7735_TFT::COLOR_WHITE);
+      tft.display();
+    }
+    // one port being driven: "PORT" small, the number large, the pin underneath
+    static void showPort(int port, int gpio) {
+      char num[4], pin[32];
+      snprintf(num, sizeof num, "%d", port);
+      snprintf(pin, sizeof pin, "pin 5 - GPIO %d", gpio);
+      tft.clear();
+      centered("PORT", 4, 2, 0x8410);                     // grey
+      centered(num, 22, 5, ST7735_TFT::COLOR_YELLOW);     // 30 x 40 px per digit
+      centered(pin, 68, 1, ST7735_TFT::COLOR_WHITE);
+      tft.display();
+    }
+    static void pulseDeg(float deg) {     // 0..180 deg -> 500..2500 us, 14-bit at 50 Hz
+      uint32_t duty = (uint32_t)((uint64_t)(500 + (int)(deg * 2000 / 180.0f)) * 16383 / 20000);
+      for (int c = 0; c < 2; c++) if (pins[c] >= 0) ledcWrite(c, duty);
+    }
+    static void release() {
+      for (int c = 0; c < 2; c++) {
+        ledcWrite(c, 0);
+        if (pins[c] >= 0) { ledcDetachPin(pins[c]); pinMode(pins[c], INPUT); pins[c] = -1; }
+      }
+    }
+    static void legsRelease();
+    static void startPort(int i, int only = -1) {   // only: -1 both lines, 0 Line A, 1 Line B
+      legsRelease(); release();
+      for (int c = 0; c < 2; c++) if (only < 0 || only == c) { pins[c] = PROBES[i]->pin(c); ledcAttachPin(pins[c], c); }
+      char big[16], small[40];
+      snprintf(big, sizeof big, only < 0 ? "PORT %d" : "P%d %c", PORTS[i], only == 1 ? 'B' : 'A');
+      snprintf(small, sizeof small, "A: GPIO %d  B: GPIO %d", PROBES[i]->pin(0), PROBES[i]->pin(1));
+      show(big, small, ST7735_TFT::COLOR_YELLOW);
+      event(big);
+      swing = 0; nextSwing = millis(); endAt = millis() + 5000;
+    }
+    static void startGpio(int i) {
+      release();
+      pins[0] = SCAN[i]; ledcAttachPin(pins[0], 0);
+      char big[16], small[40];
+      snprintf(big, sizeof big, "GPIO %d", SCAN[i]);
+      snprintf(small, sizeof small, "scan %d of %d", i + 1, NSCAN);
+      show(big, small, ST7735_TFT::COLOR_CYAN);
+      event(big);
+      swing = 0; nextSwing = millis(); endAt = millis() + 2000;
+    }
+    // one line's electrical check: "ok" = drives both ways and floats free;
+    // "GND" / "HIGH" = held there from outside; "stuck" = cannot be driven
+    static char checkBuf[2][24];
+    static const char* checkPin(int pin, int slot) {
+      // H/L: read back while driven high / low; U/D: read with only the pull-up / pull-down on
+      pinMode(pin, OUTPUT); digitalWrite(pin, HIGH); delayMicroseconds(50); int h = digitalRead(pin);
+      digitalWrite(pin, LOW); delayMicroseconds(50); int l = digitalRead(pin);
+      pinMode(pin, INPUT_PULLUP); delay(2); int pu = digitalRead(pin);
+      pinMode(pin, INPUT_PULLDOWN); delay(2); int pd = digitalRead(pin);
+      pinMode(pin, INPUT);
+      snprintf(checkBuf[slot], sizeof checkBuf[slot], "H%d L%d U%d D%d", h, l, pu, pd);
+      return checkBuf[slot];
+    }
+    static void checkAll() {
+      release();
+      tft.clear();
+      for (int i = 0; i < NPORTS; i++) {
+        const char* a = checkPin(PROBES[i]->pin(0), 0);
+        const char* b = checkPin(PROBES[i]->pin(1), 1);
+        char line[48];
+        snprintf(line, sizeof line, "port %d A:%s B:%s", PORTS[i], a, b);
+        bool good = true;
+        tft.displayText(line, 2 + (i / 5) * 80, 4 + (i % 5) * 15, 1, good ? ST7735_TFT::COLOR_GREEN : ST7735_TFT::COLOR_YELLOW);
+        event(line);
+      }
+      tft.display();
+    }
+    // the voltage on a line while the chip drives it high (ADC pins only: GPIO 1-20).
+    // ~3300 mV: a powered servo or nothing; ~500-1500 mV: feeding an unpowered servo
+    // through its input; ~0 mV: shorted to GND.
+    static int drivenMv(int pin) {
+      if (pin < 1 || pin > 20) return -1;
+      analogReadMilliVolts(pin);                       // attaches the ADC to the pad
+      rtc_gpio_set_direction((gpio_num_t)pin, RTC_GPIO_MODE_INPUT_OUTPUT);
+      rtc_gpio_set_level((gpio_num_t)pin, 1);
+      delay(5);
+      int mv = analogReadMilliVolts(pin);
+      rtc_gpio_set_level((gpio_num_t)pin, 0);
+      rtc_gpio_deinit((gpio_num_t)pin);
+      pinMode(pin, INPUT);
+      return mv;
+    }
+    static void voltsAll() {
+      release();
+      tft.clear();
+      for (int i = 0; i < NPORTS; i++) {
+        int a = drivenMv(PROBES[i]->pin(0)), b = drivenMv(PROBES[i]->pin(1));
+        char line[48];
+        snprintf(line, sizeof line, "port %d A:%dmV B:%dmV", PORTS[i], a, b);
+        tft.displayText(line, 2 + (i / 5) * 80, 4 + (i % 5) * 15, 1, ST7735_TFT::COLOR_WHITE);
+        event(line);
+      }
+      tft.display();
+    }
+    // all 8 legs at once: Line A of each leg port on its own LEDC channel 0..7
+    static const int LEG_PORTS[8] = {3, 4, 5, 6, 10, 11, 13, 14};
+    static int legPin[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
+    static bool legsOn = false;
+    static unsigned long legsEnd = 0, legsNext = 0;
+    static int legsStep = 0;
+    static void legsAttach() {
+      release();
+      for (int k = 0; k < 8; k++) {
+        for (int i = 0; i < NPORTS; i++) if (PORTS[i] == LEG_PORTS[k]) legPin[k] = PROBES[i]->pin(0);
+        ledcSetup(k, 50, 14);
+        ledcAttachPin(legPin[k], k);
+      }
+      legsOn = true;
+    }
+    static void legsDeg(float deg) {
+      uint32_t duty = (uint32_t)((uint64_t)(500 + (int)(deg * 2000 / 180.0f)) * 16383 / 20000);
+      for (int k = 0; k < 8; k++) ledcWrite(k, duty);
+      char big[16]; snprintf(big, sizeof big, "LEGS %d", (int)deg);
+      show(big, "ports 3 4 5 6 10 11 13 14, line A", ST7735_TFT::COLOR_YELLOW);
+    }
+    static void legsWrite(int k, float deg) {
+      ledcWrite(k, (uint32_t)((uint64_t)(500 + (int)(deg * 2000 / 180.0f)) * 16383 / 20000));
+    }
+    // the cycle's order, as indexes into LEG_PORTS: ports 3, 10, 4, 11, 5, 13, 6, 14
+    static const int CYCLE_ORDER[8] = {0, 4, 1, 5, 2, 6, 3, 7};
+    static bool cycleOn = false;
+    static int cycleLeg = -1;
+    // the right-side loop: one port at a time on LEDC channel 0, Line A only
+    static const int RIGHT_PORTS[4] = {10, 14, -47, -48};   // < 0: a raw GPIO, not a port
+    static bool rightOn = false;
+    static int rightAt = -1;
+    static unsigned long rightStart = 0, rightNext = 0;
+    static void rightBegin() {
+      legsRelease(); release();
+      rightOn = true; rightAt = -1; rightStart = millis(); rightNext = millis();
+    }
+    static bool tryOn = false;
+    static int tryPat = -1;
+    static const char* const PAT_NAMES[5] = {"TOGETHER", "WAVE", "ALTERNATE", "SIDES", "TROT"};
+    static float patPhase(int pat, int k) {   // phase of leg k (0..7 = ports 3,4,5,6,10,11,13,14)
+      switch (pat) {
+        case 0: return 0;
+        case 1: return k * PI / 4;
+        case 2: return (k % 2) ? PI : 0;
+        case 3: return (k < 4) ? 0 : PI;
+        default: return (k / 2) * PI / 2;
+      }
+    }
+    static bool waveOn = false;
+    static unsigned long waveStart = 0, waveNext = 0;
+    static void legsRelease() {
+      waveOn = false; tryOn = false; cycleOn = false;
+      for (int k = 0; k < 8; k++) { ledcWrite(k, 0); if (legPin[k] >= 0) { ledcDetachPin(legPin[k]); pinMode(legPin[k], INPUT); legPin[k] = -1; } }
+      legsOn = false;
+    }
+    static void finish(const char* msg) {
+      release(); mode = 0;
+      show("DONE", msg, ST7735_TFT::COLOR_GREEN);
+      event("done");
+    }
+  setup: |
+    for (int c = 0; c < 2; c++) { ledcSetup(c, 50, 14); ledcWrite(c, 0); }
+    esp_task_wdt_init(3, true);           // 3 s without esp_task_wdt_reset() -> restart
+    esp_task_wdt_add(NULL);
+    esp_reset_reason_t r = esp_reset_reason();
+    {
+      const char* why = r == ESP_RST_BROWNOUT ? "brownout" : r == ESP_RST_POWERON ? "power on" : r == ESP_RST_SW ? "software"
+                      : r == ESP_RST_PANIC ? "crash" : (r == ESP_RST_INT_WDT || r == ESP_RST_TASK_WDT || r == ESP_RST_WDT) ? "watchdog"
+                      : r == ESP_RST_EXT ? "reset pin" : "other";
+      char ev[48]; snprintf(ev, sizeof ev, "boot, last reset: %s", why); event(ev);
+    }
+    bool brown = r == ESP_RST_BROWNOUT;   // the supply sagged: servos pulling too much
+    show(brown ? "BROWN" : "READY", brown ? "reset: brownout" : "atech send probe 13 / all / scan",
+         brown ? ST7735_TFT::COLOR_RED : ST7735_TFT::COLOR_GREEN);
+    event(brown ? "boot after brownout" : "boot");
+  loop: |
+    esp_task_wdt_reset();
+    static unsigned long helloAt = 0;
+    if ((long)(millis() - helloAt) >= 0) {
+      helloAt = millis() + 2000;
+      char ev[64];
+      snprintf(ev, sizeof ev, "hello, up %lus, %s", millis() / 1000,
+               rightOn ? "right loop" : legsOn ? "legs" : mode ? "port test" : "idle");
+      event(ev);
+    }
+    static bool autoStarted = false;
+    if (!autoStarted && millis() > 1500) {
+      autoStarted = true;
+      rightBegin();
+      event("right loop started at boot");
+    }
+    if (atech_action == "probe") {
+      String v = atech_value; v.trim(); v.toUpperCase();
+      if (v == "RIGHT") { mode = 0; rightBegin(); atechDone(); }
+      else if (v == "STOP") { rightOn = false; legsRelease(); release(); mode = 0; show("STOP", "", ST7735_TFT::COLOR_RED); atechDone(); }
+      else if (v.startsWith("LEGS")) {
+        rightOn = false; mode = 0; if (!legsOn) legsAttach(); waveOn = false; tryOn = false; cycleOn = false;
+        String a = v.substring(4); a.trim();
+        if (a.length()) { legsEnd = 0; legsDeg(constrain(a.toFloat(), 0.0f, 180.0f)); }
+        else { legsDeg(90); legsStep = 0; legsNext = millis() + 800; legsEnd = millis() + 6800; }
+        atechDone();
+      }
+      else if (v == "CYCLE") {
+        rightOn = false; mode = 0; if (!legsOn) legsAttach();
+        legsEnd = 0; waveOn = false; tryOn = false; cycleOn = true; cycleLeg = -1; waveStart = millis(); waveNext = millis();
+        atechDone();
+      }
+      else if (v == "TRY") {
+        rightOn = false; mode = 0; if (!legsOn) legsAttach();
+        legsEnd = 0; waveOn = false; cycleOn = false; tryOn = true; tryPat = -1; waveStart = millis(); waveNext = millis();
+        atechDone();
+      }
+      else if (v == "WAVE") {
+        rightOn = false; mode = 0; if (!legsOn) legsAttach();
+        legsEnd = 0; tryOn = false; cycleOn = false; waveOn = true; waveStart = millis(); waveNext = millis();
+        show("WAVE", "8 legs, +-30 deg, 15 s", ST7735_TFT::COLOR_CYAN);
+        atechDone();
+      }
+      else if (v == "ALL") { rightOn = false; mode = 2; at = 0; startPort(0); atechDone(); }
+      else if (v == "VOLTS") { rightOn = false; mode = 0; voltsAll(); atechDone(); }
+      else if (v == "FIND") {
+        rightOn = false; mode = 0; legsRelease(); release();
+        String found = "";
+        for (int i = 0; i < NSCAN; i++) {
+          int g = SCAN[i];
+          pinMode(g, INPUT_PULLUP); delay(2); int pu = digitalRead(g);
+          pinMode(g, INPUT_PULLDOWN); delay(2); int pd = digitalRead(g);
+          pinMode(g, INPUT);
+          const char* what = (pu == 0 && pd == 0) ? "LOAD" : (pu == 1 && pd == 1) ? "HIGH" : nullptr;
+          int port = 0; char line = ' ';
+          for (int k = 0; k < NPORTS; k++) for (int c = 0; c < 2; c++) if (PROBES[k]->pin(c) == g) { port = PORTS[k]; line = c ? 'B' : 'A'; }
+          char ev[64];
+          if (port) snprintf(ev, sizeof ev, "gpio %d (port %d %c): %s", g, port, line, what ? what : "free");
+          else snprintf(ev, sizeof ev, "gpio %d (no port in map): %s", g, what ? what : "free");
+          event(ev);
+        }
+        atechDone();
+      }
+      else if (v == "CHECK") { rightOn = false; mode = 0; checkAll(); atechDone(); }
+      else if (v == "SCAN") { rightOn = false; mode = 3; at = 0; startGpio(0); atechDone(); }
+      else {
+        int n = v.toInt(), only = v.endsWith("A") ? 0 : v.endsWith("B") ? 1 : -1;
+        for (int i = 0; i < NPORTS; i++) if (PORTS[i] == n) { rightOn = false; mode = 1; at = i; startPort(i, only); atechDone(); break; }
+      }
+    }
+    if (rightOn && (long)(millis() - rightNext) >= 0) {
+      float t = (millis() - rightStart) / 1000.0f;
+      int at = ((int)(t / 1.0f)) % 4;
+      float tl = fmodf(t, 1.0f);
+      if (at != rightAt) {
+        release();
+        rightAt = at;
+        char ev[24];
+        if (RIGHT_PORTS[at] < 0) {                       // a raw GPIO the map has no port for
+          int g = -RIGHT_PORTS[at];
+          pinMode(g, OUTPUT); digitalWrite(g, LOW); delayMicroseconds(50);
+          bool held = digitalRead(g) != 0;                  // something outside holds it high: do not fight it
+          pinMode(g, INPUT);
+          char big[12]; snprintf(big, sizeof big, "GPIO %d", g);
+          if (held) {
+            show(big, "held high - skipped", ST7735_TFT::COLOR_RED);
+            snprintf(ev, sizeof ev, "GPIO %d held high, skipped", g);
+          } else {
+            pins[0] = g; ledcAttachPin(g, 0);
+            show(big, "which port moves?", ST7735_TFT::COLOR_CYAN);
+            snprintf(ev, sizeof ev, "GPIO %d", g);
+          }
+        } else {
+          for (int i = 0; i < NPORTS; i++) if (PORTS[i] == RIGHT_PORTS[at]) { pins[0] = PROBES[i]->pin(0); ledcAttachPin(pins[0], 0); }
+          showPort(RIGHT_PORTS[at], pins[0]);
+          snprintf(ev, sizeof ev, "PORT %d", RIGHT_PORTS[at]);
+        }
+        event(ev);
+      }
+      float ramp = min(1.0f, tl / 0.15f) * min(1.0f, (1.0f - tl) / 0.15f);   // one up-and-down per second
+      pulseDeg(90 + ramp * 35 * sinf(2 * PI * 1.0f * tl));
+      rightNext = millis() + 20;
+    }
+    if (cycleOn && (long)(millis() - waveNext) >= 0) {
+      float t = (millis() - waveStart) / 1000.0f;
+      int leg = CYCLE_ORDER[((int)(t / 3.0f)) % 8];
+      float tl = fmodf(t, 3.0f);
+      if (leg != cycleLeg) {
+        cycleLeg = leg;
+        char big[16]; snprintf(big, sizeof big, "PORT %d", LEG_PORTS[leg]);
+        show(big, "up and down 3 s, others at 90", ST7735_TFT::COLOR_YELLOW);
+        event(big);
+      }
+      float ramp = min(1.0f, tl / 0.3f) * min(1.0f, (3.0f - tl) / 0.3f);   // ease in and out
+      // only the moving leg gets pulses; the others are limp (0 duty), so one servo draws current at a time
+      for (int k = 0; k < 8; k++) {
+        if (k == leg) legsWrite(k, 90 + ramp * 35 * sinf(2 * PI * 1.0f * tl));
+        else ledcWrite(k, 0);
+      }
+      waveNext += 20;
+    }
+    if (tryOn && (long)(millis() - waveNext) >= 0) {
+      float t = (millis() - waveStart) / 1000.0f;
+      int pat = ((int)(t / 10.0f)) % 5;
+      float tp = fmodf(t, 10.0f);
+      if (pat != tryPat) {
+        tryPat = pat;
+        char small[40]; snprintf(small, sizeof small, "pattern %d of 5, 10 s", pat + 1);
+        show(PAT_NAMES[pat], small, ST7735_TFT::COLOR_CYAN);
+        char ev[32]; snprintf(ev, sizeof ev, "pattern %s", PAT_NAMES[pat]); event(ev);
+      }
+      float ramp = min(1.0f, tp / 1.0f) * min(1.0f, (10.0f - tp) / 0.5f);   // ease in and out
+      for (int k = 0; k < 8; k++) legsWrite(k, 90 + ramp * 30 * sinf(2 * PI * 0.8f * t - patPhase(pat, k)));
+      waveNext += 20;
+    }
+    if (waveOn && (long)(millis() - waveNext) >= 0) {   // 50 updates a second
+      float t = (millis() - waveStart) / 1000.0f;
+      if (t > 15.0f) { waveOn = false; legsDeg(90); event("wave done, holding 90"); }
+      else {
+        float ramp = min(1.0f, t / 1.5f);                   // ease in over 1.5 s
+        for (int k = 0; k < 8; k++) legsWrite(k, 90 + ramp * 30 * sinf(2 * PI * 0.8f * t - k * PI / 4));
+        waveNext += 20;
+      }
+    }
+    if (legsOn && legsEnd && (long)(millis() - legsNext) >= 0) {
+      if ((long)(millis() - legsEnd) >= 0) { legsDeg(90); legsEnd = 0; event("legs done, holding 90"); }
+      else { legsDeg(legsStep++ % 2 ? 105 : 75); legsNext += 500; }
+    }
+    if (mode != 0) {
+      if ((long)(millis() - endAt) >= 0) {
+        if (mode == 2 && ++at < NPORTS) startPort(at);
+        else if (mode == 3 && ++at < NSCAN) startGpio(at);
+        else finish(mode == 3 ? "atech send probe scan" : "atech send probe all");
+      } else if ((long)(millis() - nextSwing) >= 0) {
+        pulseDeg(swing++ % 2 ? 110 : 70);
+        nextSwing += 400;
+      }
+    }

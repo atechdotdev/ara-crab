@@ -9,7 +9,7 @@ licence.
 
 Changes made for Atech-crab (2026-11):
   - atech/ (new): firmware for the Atech 14-port board, generated from Sesame's
-    firmware/movement-sequences.h; the sg90_pair servo module; a deck and lid
+    firmware/movement-sequences.h; the mg90s_pair servo module; a deck and lid
     replacing Sesame's top cover (from Atech Atelier's "Sesame walker" design);
     print-ready STLs and sliced print files; an assembly guide and video.
   - README.md: an Atech-crab introduction added above Sesame's original README.
