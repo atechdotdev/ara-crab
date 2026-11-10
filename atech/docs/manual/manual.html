@@ -1,0 +1,282 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Atech-crab — assembly</title>
+<!-- Atech-crab assembly guide, print files v6. Pictures: render.py (Blender) from the assembled CAD;
+     PDF: Chrome headless, print to PDF (A4). -->
+<style>
+@page { size: A4; margin: 14mm 14mm 16mm; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; color: #1d1f22; font-size: 10.5pt; line-height: 1.42; margin: 0; }
+h1 { font-size: 30pt; margin: 0 0 2mm; letter-spacing: -0.5px; }
+h2 { font-size: 16pt; margin: 0 0 3mm; display: flex; align-items: center; gap: 3mm; }
+h2 .n { background: #f2a43a; color: #fff; border-radius: 50%; width: 9mm; height: 9mm; display: inline-flex; align-items: center; justify-content: center; font-size: 13pt; flex: none; }
+h3 { font-size: 11.5pt; margin: 4mm 0 1.5mm; }
+.page { page-break-after: always; }
+.page:last-child { page-break-after: auto; }
+.sub { color: #5b6066; font-size: 12pt; margin-bottom: 6mm; }
+img { width: 100%; display: block; }
+.fig { margin: 2mm 0 1mm; }
+.cap { color: #6b7076; font-size: 8.5pt; margin-bottom: 3mm; }
+.row { display: flex; gap: 6mm; }
+.row > div { flex: 1; min-width: 0; }
+ol, ul { margin: 1mm 0 2mm; padding-left: 5.5mm; }
+li { margin-bottom: 1.2mm; }
+table { border-collapse: collapse; width: 100%; font-size: 9.5pt; margin: 1mm 0 3mm; }
+th, td { text-align: left; padding: 1.4mm 2mm; border-bottom: 0.3mm solid #dfe2e6; vertical-align: top; }
+th { background: #f3f4f6; font-weight: 600; }
+.warn { border-left: 1.2mm solid #d64545; background: #fdf1f1; padding: 2.5mm 3.5mm; margin: 2mm 0 3mm; }
+.note { border-left: 1.2mm solid #f2a43a; background: #fff7ec; padding: 2.5mm 3.5mm; margin: 2mm 0 3mm; }
+code { font-family: Menlo, monospace; font-size: 9pt; background: #f3f4f6; padding: 0.3mm 1mm; border-radius: 0.8mm; }
+.small { font-size: 8.5pt; color: #6b7076; }
+.sw { display:inline-block; width:3mm; height:3mm; border-radius:50%; vertical-align:-0.3mm; margin-right:1mm; border:0.2mm solid #0003; }
+</style></head><body>
+
+<section class="page">
+  <h1>Atech-crab</h1>
+  <div class="sub">Assembly guide · print files v6 (holes for the wires) · 9 November 2026</div>
+  <div class="fig"><img src="img/cover.png"></div>
+  <p>Atech-crab is Sesame, Dorian Todd's open-source quadruped (Apache-2.0), with an Atech board as its brain. Its frame, servos and legs stay as Sesame
+  makes them, and a new deck and lid from Atech Atelier ("Sesame walker" 0.1.3) carry an Atech 14-port board
+  flat on top, with the screen in a visor at the front. The eight MG90S servos plug into the board's ports 2–5 on jumper wires.</p>
+  <h3>New in v6: a way through for every wire</h3>
+  <ul>
+    <li><b>8 lead slots through the internal frame</b>, one per servo, from the wire channels underneath up into the spine.</li>
+    <li><b>8 lead holes in the spine's front and back walls</b>, one per servo: the other way up, if you prefer it.</li>
+    <li><b>Slots at every side port</b>, 2–6 and 10–14, half in the lid and half in the deck, each with a lead notch under it (v4, v5).</li>
+    <li><b>20 keyholes in the lid</b>, two by each side port, for the wire bobbins.</li>
+    <li><b>16 small wire parts</b>: 4 port jumper holders, 8 servo plug sleeves and 4 wire bobbins.</li>
+  </ul>
+  <div class="note"><b>Not built yet.</b> These pictures come from the CAD, which passes Atelier's fit check, and the wire parts were
+  checked against it. Nobody has printed and assembled v6. Test-fit the deck on the frame, with the servos in, and try one
+  jumper holder in a port, before you print a second set.</div>
+</section>
+
+<section class="page">
+  <h2>What you need</h2>
+  <div class="row">
+    <div>
+      <h3>Printed: 13 parts + 16 wire parts</h3>
+      <p class="small">Bambu Lab printers: one file prints everything, e.g. <code>atech_crab_everything_pla_h2dp.gcode.3mf</code>
+      for the H2D Pro (atech/print/gcode/). Other printers: atech/print/README.md.</p>
+      <table>
+        <tr><th>Part</th><th>Qty</th><th>From</th></tr>
+        <tr><td>Internal frame, with lead slots</td><td>1</td><td>Sesame, v6</td></tr>
+        <tr><td>Bottom cover</td><td>1</td><td>Sesame</td></tr>
+        <tr><td>Hip legs (femurs) L1, L2, R1, R2</td><td>4</td><td>Sesame</td></tr>
+        <tr><td>Feet L3, L4, R3, R4</td><td>4</td><td>Sesame</td></tr>
+        <tr><td>Deck part 1 (plate)</td><td>1</td><td>Atelier, v5</td></tr>
+        <tr><td>Deck part 2 (spine and head), with lead holes</td><td>1</td><td>Atelier, v6</td></tr>
+        <tr><td>Lid, with keyholes</td><td>1</td><td>Atelier, v6</td></tr>
+        <tr><td>Port jumper holder</td><td>4</td><td>wire part</td></tr>
+        <tr><td>Servo plug sleeve</td><td>8</td><td>wire part</td></tr>
+        <tr><td>Wire bobbin</td><td>4</td><td>wire part</td></tr>
+      </table>
+      <h3>Hardware</h3>
+      <table>
+        <tr><th>Item</th><th>Qty</th></tr>
+        <tr><td>MG90S servos (metal gear, 180°)</td><td>8</td></tr>
+        <tr><td>Atech 14-port board</td><td>1</td></tr>
+        <tr><td>Atech USB-C module (port 8)</td><td>1</td></tr>
+        <tr><td>Atech motion sensor module, icm40608 (port 13)</td><td>1</td></tr>
+        <tr><td>Atech screen module and its cable (ports 10+11)</td><td>1</td></tr>
+        <tr><td>M2×8 pan-head screws (deck 4, bottom cover 2)</td><td>6</td></tr>
+        <tr><td>M2×10 countersunk screws (lid)</td><td>3</td></tr>
+        <tr><td>Male-to-male jumper wires (3 a port)</td><td>12+</td></tr>
+        <tr><td>5 V 3 A supply for the servos</td><td>1</td></tr>
+        <tr><td>Superglue (CA)</td><td>—</td></tr>
+      </table>
+    </div>
+    <div style="flex:0.9">
+      <div class="fig"><img src="img/parts.png"></div>
+      <div class="cap">The three Atelier parts: lid (top), deck part 1, deck part 2.</div>
+      <div class="fig"><img src="img/wparts.png"></div>
+      <div class="cap">The wire parts: a port jumper holder, a servo plug sleeve and a wire bobbin (pegs up, as it prints).</div>
+      <div class="cap">In the step pictures, the parts you add in that step are in colour; the parts already in place are pale
+      grey; printed parts you add are amber.</div>
+    </div>
+  </div>
+</section>
+
+<section class="page">
+  <h2><span class="n">1</span>Build the base</h2>
+  <div class="row">
+    <div style="flex:1.2"><img src="img/s1_base.png"></div>
+    <div>
+      <ol>
+        <li>Put the four hip servos into the frame, and the four knee servos into the femurs, as in Sesame's own guide
+        (github.com/dorianborian/sesame-robot).</li>
+        <li>Fit the femurs and the feet onto the servo horns.</li>
+        <li>Leave the bottom cover off for now: the deck screws go in from inside the frame.</li>
+      </ol>
+    </div>
+  </div>
+  <h3>The leads: up through the frame</h3>
+  <div class="row">
+    <div style="flex:1.2"><img src="img/s1_slots.png"><div class="cap">The frame from below (amber). Each wire channel has two
+    9 × 3.4 mm lead slots going up into the spine, one per servo.</div></div>
+    <div>
+      <ol>
+        <li>With the bottom cover off, push each servo's plug up through a lead slot in the frame, then press the lead into
+        the channel underneath, as Sesame's guide does.</li>
+        <li>Inside, the plug comes up beside the spine. The spine wall over each slot has a 1.1 mm notch on its inside, so the
+        plug gets past it.</li>
+      </ol>
+      <p class="small">There is a second way in: the lead holes in the spine's end walls (step 2). Use either route for each lead.</p>
+    </div>
+  </div>
+</section>
+
+<section class="page">
+  <h2><span class="n">2</span>Glue the deck</h2>
+  <div class="row">
+    <div style="flex:1.3"><img src="img/s2_glue.png"></div>
+    <div>
+      <ol>
+        <li>Dry-fit deck part 2 (spine and head) under deck part 1. The 0.6 mm lip fits the recess, so it only goes one way.</li>
+        <li>Glue it with superglue (CA) and hold it until it sets.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="row" style="margin-top:3mm">
+    <div style="flex:1.3"><img src="img/s2_holes.png"><div class="cap">The spine's back wall: four lead holes, 9 × 4.5 mm with
+    round ends, so a servo plug passes through. The front wall has the same four.</div></div>
+    <div>
+      <h3>The other route: the spine's lead holes</h3>
+      <ul>
+        <li><b>Front wall:</b> the front legs' leads. <b>Back wall:</b> the rear legs' leads.</li>
+        <li>On each leg's own side of the wall, the <b>hip</b> lead goes in the <b>lower</b> hole and the <b>knee</b> lead in the
+        <b>upper</b> one.</li>
+        <li>The side walls have no holes: the femurs pass 0.2 mm outside them.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="page">
+  <h2><span class="n">3</span>Deck onto the frame</h2>
+  <div class="fig"><img src="img/s3_deck.png" style="width:78%;margin:auto"></div>
+  <ol>
+    <li>Lower the deck onto the frame with every servo lead inside the spine: up from the frame's lead slots, or threaded
+    through the spine's end-wall holes.</li>
+    <li>Pull each lead up the spine to the 5 mm gap under the board.</li>
+    <li>From inside the frame, through its open bottom, drive 4 × M2×8 pan-head screws up into the deck's bosses.</li>
+  </ol>
+  <h2 style="margin-top:5mm"><span class="n">4</span>Battery and bottom cover</h2>
+  <div class="row">
+    <div style="flex:1.2"><img src="img/s4_bottom.png"></div>
+    <div>
+      <ol>
+        <li>Check that every lead lies in its channel and none is pinched at the edge of the frame.</li>
+        <li>Put Sesame's battery into the frame.</li>
+        <li>Close the bottom with the bottom cover: 2 × M2×8 pan-head screws.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="page">
+  <h2><span class="n">5</span>Board, modules and screen</h2>
+  <div class="fig"><img src="img/s5_board.png" style="width:82%;margin:auto"></div>
+  <ol>
+    <li>Lay the servo leads in the 5 mm gap under the board, each toward its port (table in step 6). A lead leaves through the
+    notch under its port's slot: ports 2–6 on the right, 10–14 on the left, whichever is shorter.</li>
+    <li>Set the board on the four posts in the tray, ports 1–6 on the right, port 8 at the back.</li>
+    <li>Slide the USB-C module into port 8 (its socket faces the back wall), and the motion sensor into port 13.</li>
+    <li>Stand the screen upright in the head, behind the window, connector edge down. Its two ribbons loop down into the
+    right-hand bay, run flat under the board and plug into ports 10 and 11.</li>
+  </ol>
+</section>
+
+<section class="page">
+  <h2><span class="n">6</span>Wire the servos</h2>
+  <div class="row">
+    <div><img src="img/s6_slots.png"><div class="cap">The slots at ports 2–6, half lid, half deck, and the lead notches under them.</div></div>
+    <div><img src="img/s6_slots_left.png"><div class="cap">The same on the left, at ports 10–14. Port 12's notch sits 2 mm back, clear of a lid-screw post.</div></div>
+  </div>
+  <table>
+    <tr><th>Port</th><th>Leg</th><th>Line A (pin 5)</th><th>Line B (pin 6)</th></tr>
+    <tr><td>2</td><td>front left</td><td>L1 hip</td><td>L3 knee</td></tr>
+    <tr><td>3</td><td>front right</td><td>R1 hip</td><td>R3 knee</td></tr>
+    <tr><td>4</td><td>back left</td><td>L2 hip</td><td>L4 knee</td></tr>
+    <tr><td>5</td><td>back right</td><td>R2 hip</td><td>R4 knee</td></tr>
+  </table>
+  <div class="row">
+    <div style="flex:1.1"><img src="img/s6_holders.png"><div class="cap">A jumper holder drops onto each of ports 2–5, its tongue in the port's slot.</div></div>
+    <div>
+      <h3>Jumper holders</h3>
+      <ol>
+        <li>Per port, push three jumpers into the holder's channel: <span class="sw" style="background:#6b3819"></span>GND (pin 4),
+        <span class="sw" style="background:#ff8014"></span>line A (pin 5), <span class="sw" style="background:#ffd91a"></span>line B (pin 6).</li>
+        <li>Plug the holder onto the port as one piece. Its solid half covers pins 1–3 (+12 V, 5 V, 3.3 V), toward the front
+        of the robot, so no jumper can reach them. Upside down it does not go in.</li>
+        <li>The same part, turned round, fits ports 10–13.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="page">
+  <h2>6 <span style="font-weight:400;color:#6b7076">(continued)</span></h2>
+  <div class="row">
+    <div style="flex:1.2"><img src="img/s6_wires.png"><div class="cap">Jumpers out of the holders, a sleeve on each servo joint (an illustration: the
+    servo leads and the power wires are not drawn).</div></div>
+    <div>
+      <h3>Join the servos</h3>
+      <ol>
+        <li>Thread a plug sleeve onto each signal jumper, then plug the jumpers into the servo's 3-pin plug: the servo's orange
+        (or yellow) wire to its signal jumper, line A for the hip and line B for the knee.</li>
+        <li>Slide the sleeve over the joint, so the plug cannot pull apart.</li>
+        <li>Servo power: every servo's red wire to the 5 V supply's +, every brown wire to its −, and the supply's − to a GND
+        jumper.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="warn"><b>+12 V sits next to +5 V.</b> Port pins: 1 +12 V, 2 +5 V, 3 +3.3 V, 4 GND, 5 line A, 6 line B. The holder
+  covers pins 1–3 when it goes in the right way round, with its solid half to the front. If you wire without a holder, measure first:
+  with the board on USB, the pin at 3.3 V is pin 3, and its neighbour that beeps to the USB-C shell is GND (pin 4). Never connect pin 1.</div>
+</section>
+
+<section class="page">
+  <h2><span class="n">7</span>Close the lid</h2>
+  <div class="row">
+    <div style="flex:1.2"><img src="img/s7_lid.png"></div>
+    <div>
+      <ol>
+        <li>Check that no ribbon or lead is pinched between the deck and the lid, and that each holder's tongue sits in its slot:
+        the lid holds it there.</li>
+        <li>Fit the lid and drive 3 × M2×10 countersunk screws into the bosses in the side bays.</li>
+      </ol>
+      <div class="fig"><img src="img/s7_usb.png"></div>
+      <div class="cap">The USB-C opening at the back, 13 × 11.5 mm, across the seam.</div>
+    </div>
+  </div>
+  <h3>Wire bobbins: the slack on the lid</h3>
+  <div class="row">
+    <div><img src="img/s7_keyholes.png"><div class="cap">Two keyholes by each side port.</div></div>
+    <div><img src="img/s7_bobbins.png"><div class="cap">A bobbin by each of ports 2–5, one per leg.</div></div>
+  </div>
+  <ol>
+    <li>Wind a port's slack round its bobbin's core: both servo leads and the port's jumpers. Pinch each end in a slit in the top flange.</li>
+    <li>Drop the bobbin's two pegs into the port's keyholes and slide it 4 mm outward, toward the port: the wires' pull keeps it locked.
+    To take it off, slide it inward and lift.</li>
+    <li>At port 12 (and nearly at port 6) the bobbin covers a lid screw: take the bobbin off before you open the lid.</li>
+  </ol>
+</section>
+
+<section class="page">
+  <h2><span class="n">8</span>First run</h2>
+  <div class="row">
+    <div>
+      <ol>
+        <li>Plug a USB-C data cable into the back, and switch on the servos' 5 V supply.</li>
+        <li>Flash the walker: in <code>atech/firmware</code>, run <code>atech upload .</code></li>
+        <li>Check the board: <code>atech check</code>. Then try one move with <code>atech send spider_go wave</code>,
+        holding the robot off the table.</li>
+      </ol>
+      <p class="small">The walker firmware and its gaits have been run only in simulation (an emulated board in MuJoCo),
+      and the MG90S servo driver not yet with MG90S servos on a board. A servo that only twitches is short of power: use
+      the separate 5 V supply.</p>
+    </div>
+    <div style="flex:1.1"><img src="img/rear.png"></div>
+  </div>
+</section>
+</body></html>

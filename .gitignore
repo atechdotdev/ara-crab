@@ -7,3 +7,4 @@ atech/firmware/build/
 atech/crab_rig/build/
 atech/servo_test/build/
 atech/crab_rig/rig_log.txt
+.DS_Store

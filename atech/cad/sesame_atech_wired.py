@@ -2,8 +2,11 @@
 
 Atelier 0.1.3's sesame_atech.py plus wire openings (2026-11-02): the USB-C opening
 reaches 5 mm lower, through the lid/deck seam; a slot at servo ports 2-5 and an
-SG90 lead notch under each; and (v4, 2026-11-03) the same slots and notches on the
-other side, at ports 10-13. See the WIRE OPENINGS block.
+SG90 lead notch under each; (v4, 2026-11-03) the same slots and notches on the
+other side, at ports 10-13; and (v5, 2026-11-09) at the back ports 6 and 14. See the
+WIRE OPENINGS block. (v6, 2026-11-09) a pair of keyholes in the lid's top at each servo
+port, for the clip-on wire bobbins (WIRE BOBBIN KEYHOLES), and eight holes through the
+spine's end walls, one per servo lead (SPINE LEAD HOLES).
 
 A remix of an open design. Sesame (Dorian Todd's quadruped, Apache-2.0)
 keeps everything below its top cover exactly as upstream prints it: the
@@ -189,7 +192,7 @@ for x, y in LID_SCREWS:
     lid, deck = cad.screw_through(lid, deck, (x, y, LID_TOP), size="M2", ribs=0)
     lid_screws.append(cad.screw("csk_phillips", "M2", 10, at=(x, y, LID_TOP), axis="-Z"))
 
-# === WIRE OPENINGS: USB-C 5 mm lower, servo ports 2-5, SG90 leads ===
+# === WIRE OPENINGS: USB-C 5 mm lower, servo ports 2-6 and 10-14, SG90 leads ===
 # Wire openings for the Sesame deck and lid, in the model frame (mm), shared by the
 # FreeCAD model and the mesh cut of the print files. Each one straddles the seam
 # (z = TOP = 82.15): part of it comes out of the lid, part out of the deck.
@@ -219,6 +222,32 @@ X_OUT_LEFT, X_IN_LEFT = -45.0, -35.8
 LEAD_SHIFT_LEFT = {12: 2.0}
 
 
+# v5 (2026-11-09): ports 6 and 14, the back ports of each column (y 34.18..49.82), get the
+# same slot and lead notch. There the bay ends (y 40) and the tray wall steps in to |x| 32.3,
+# so each slot cuts the bay's side and back walls and the tray wall behind them, from x 30
+# out. The lid-screw boss at (+-33.3, 35.5) stands free in the bay at the slot's front end;
+# the slot is cut round it (2.4 mm from its axis, it is 2.2 thick), so the boss stays whole.
+PORT_Y_BACK = {6: (34.18, 49.82), 14: (34.18, 49.82)}
+BACK_BOSS_R = 2.4
+
+
+def back_cutters():
+    """[(name, box, boss keep-out (x, y, r))] for ports 6 and 14."""
+    out = []
+    for n, (y0, y1) in PORT_Y_BACK.items():
+        sx = 1 if n == 6 else -1
+        xa, xb = sorted((sx * X_IN, sx * X_OUT))
+        keep = (sx * LID_SCREWS[0][0], LID_SCREWS[0][1], BACK_BOSS_R)
+        out.append(("port%d" % n, (xa, xb, y0 - 0.5, y1 + 0.5) + SLOT_Z, keep))
+        yc = (y0 + y1) / 2
+        out.append(("sg90_%d" % n, (xa, xb, yc - LEAD_W / 2, yc + LEAD_W / 2, LEAD_Z0, SLOT_Z[0] + 0.1), keep))
+    return out
+
+
+def back_cutter_shapes():
+    return [box(*b).cut(Part.makeCylinder(r, 40.0, V(x, y, 60.0))) for _, b, (x, y, r) in back_cutters()]
+
+
 def opening_boxes():
     out = [("usb", USB)]
     for n, (y0, y1) in PORT_Y.items():
@@ -231,22 +260,242 @@ def opening_boxes():
         out.append(("sg90_%d" % n, (X_OUT_LEFT, X_IN_LEFT, yc - LEAD_W / 2, yc + LEAD_W / 2, LEAD_Z0, SLOT_Z[0] + 0.1)))
     return out
 
-deck = cad.cut(deck, [box(*b) for _, b in opening_boxes()])
-lid = cad.cut(lid, [box(*b) for _, b in opening_boxes()])
+deck = cad.cut(deck, [box(*b) for _, b in opening_boxes()] + back_cutter_shapes())
+lid = cad.cut(lid, [box(*b) for _, b in opening_boxes()] + back_cutter_shapes())
+
+# v6 (2026-11-09): WIRE BOBBIN KEYHOLES. A wire bobbin (wire_parts.py) sits on the lid's top
+# next to each servo port and holds that port's slack: both servo leads and the jumpers,
+# wound round its core. Two mushroom pegs under it drop into a pair of keyholes through the
+# lid's 2 mm top skin and slide 4 mm OUTWARD to lock, so the wires' pull keeps them locked.
+# Ports 2-5 / 10-13 sit over the bays (the bobbin x 9.5..35.5 from the middle); ports 6 / 14
+# behind them, where the lid narrows to |x| 32.3 (x 6..32). Inside |x| 38 the legs never
+# rise over the lid (the measured outline), so the bobbins stay clear of them. Holes only:
+# the lid still prints top-down with nothing under it.
+BOBBIN_Y = {2: -38.0, 3: -18.0, 4: 2.2, 5: 22.1, 6: 42.0,
+            10: -38.0, 11: -18.0, 12: 2.0, 13: 22.0, 14: 42.0}
+BOBBIN_X = {"bay": (9.5, 35.5), "back": (6.0, 32.0)}     # |x| span of the bobbin
+PEG_DX = 6.0                     # pegs at the bobbin's middle +- 6 (locked)
+KEY_TRAVEL, KEY_ENTRY_D, KEY_SLOT_W = 4.0, 6.0, 3.4     # the peg's head 5.4, neck 3.0
+
+
+def bobbin_span(n):
+    return BOBBIN_X["back" if n in (6, 14) else "bay"]
+
+
+def keyhole_pegs():
+    """[(port, x_locked, y)] in the model frame: the pegs' necks when locked."""
+    out = []
+    for n, y in BOBBIN_Y.items():
+        sx = 1 if n <= 6 else -1
+        xc = sum(bobbin_span(n)) / 2
+        out += [(n, sx * (xc + d), y) for d in (-PEG_DX, PEG_DX)]
+    return out
+
+
+def keyhole_shapes(z0=LID_TOP - WALL - 0.3, z1=LID_TOP + 1.0):
+    out = []
+    for n, x, y in keyhole_pegs():
+        sx = 1 if x > 0 else -1
+        xe = x - sx * KEY_TRAVEL                     # the entry: inward of the lock
+        h = z1 - z0
+        out.append(cad.fuse_one(Part.makeCylinder(KEY_ENTRY_D / 2, h, V(xe, y, z0)),
+                                Part.makeCylinder(KEY_SLOT_W / 2, h, V(x, y, z0)),
+                                box(min(x, xe), max(x, xe), y - KEY_SLOT_W / 2, y + KEY_SLOT_W / 2, z0, z1)))
+    return out
+
+lid = cad.cut(lid, keyhole_shapes())
+
+# v6: SPINE LEAD HOLES. Eight holes, one per servo, through the spine's front and back end
+# walls (y +-37.61..39.61), so each servo lead goes straight into the spine and up its
+# inside to the gap under the board. The side walls can't have them: the femurs pass
+# 0.2 mm outside. Front wall: the front legs' leads; back wall: the rear legs'. A leg's
+# hip lead in the lower row, its knee lead in the upper; the leg's own side of the wall.
+# Each hole is 9 x 4.5 mm with round ends, so a servo's 3-pin plug (7.6 x 2.6) passes
+# through. |x| <= 12.5 keeps 1.4 mm off the frame-screw bosses (r 2.4 at |x| ~16); the
+# top row ends 4 mm under the tray floor's underside (z 72.95).
+LEAD_HOLE_W, LEAD_HOLE_H, LEAD_HOLE_X = 9.0, 4.5, 8.0
+LEAD_HOLE_Z = {"hip": 59.0, "knee": 66.5}            # hole centres
+SPINE_HOLES = {(leg, joint): (sx * LEAD_HOLE_X, sy, LEAD_HOLE_Z[joint])
+               for leg, sx, sy in (("FL", 1, -1), ("FR", -1, -1), ("RL", 1, 1), ("RR", -1, 1))
+               for joint in ("hip", "knee")}
+
+
+def spine_hole_shapes():
+    out = []
+    r, L = LEAD_HOLE_H / 2, LEAD_HOLE_W - LEAD_HOLE_H
+    for (x, sy, z) in SPINE_HOLES.values():
+        y0 = sy * SPINE_Y - 3.0 if sy > 0 else -SPINE_Y - 3.0      # through the 2 mm wall, 3 mm past each side
+        out.append(cad.fuse_one(box(x - L / 2, x + L / 2, y0, y0 + 6.0 + WALL, z - r, z + r),
+                                *[Part.makeCylinder(r, 6.0 + WALL, V(x + d, y0, z), V(0, 1, 0)) for d in (-L / 2, L / 2)]))
+    return out
+
+deck = cad.cut(deck, spine_hole_shapes())
+
+# v6: FRAME LEAD SLOTS. Eight slots, one per servo, up through Sesame's internal frame into
+# the spine, where the frame's underside wire channels run (x +-15.5..18, recessed z
+# 38.1..44.6, y -27..27). Each slot is 9 x 4 mm, a plug on edge: x 13.4 (v6.1: through the 1 mm rib to the battery bay; 14.0 and 14.3 left slivers; the battery at 13.9 leaves 3.5 mm)
+# (the battery reaches |x| 13.9) to 17.4. The spine's wall stands over x 16.5..18.5, so a
+# notch 1.1 deep in its inner face (z up to 58) gives the plug its last millimetre; the wall
+# keeps 0.9..1.0 mm there. Front legs: y -20 and -8; rear legs: y 8 and 20 (on +x, y 20 runs
+# into the frame's own battery-wire slot). With the bottom cover off, push the plug up the
+# slot, then press the lead into the channel as upstream does.
+FRAME_SLOT_X, FRAME_SLOT_L = (13.4, 17.4), 9.0   # v6.1: through the 1 mm rib, no sliver
+FRAME_SLOT_Y = (-20.0, -8.0, 8.0, 20.0)
+FRAME_SLOT_SKIP = {(1, 20.0)}   # v6.1: the frame's own battery-wire opening (x 13.5..19, y 17..26) is there
+SPINE_NOTCH = (SPINE - WALL - 0.1, 17.5, FRAME_TOP - 0.1, 58.0)     # x0, x1, z0, z1
+
+
+def frame_slot_boxes():
+    out = []
+    for sx in (1, -1):
+        for y in FRAME_SLOT_Y:
+            if (sx, y) in FRAME_SLOT_SKIP: continue
+            xa, xb = sorted((sx * FRAME_SLOT_X[0], sx * FRAME_SLOT_X[1]))
+            out.append((xa, xb, y - FRAME_SLOT_L / 2, y + FRAME_SLOT_L / 2, 30.0, FRAME_TOP + 1.0))
+    return out
+
+
+def spine_notch_boxes():
+    x0, x1, z0, z1 = SPINE_NOTCH
+    return [tuple(sorted((sx * x0, sx * x1))) + (y - FRAME_SLOT_L / 2, y + FRAME_SLOT_L / 2, z0, z1)
+            for sx in (1, -1) for y in FRAME_SLOT_Y]
+
+SHAPES["frame"] = cad.cut(SHAPES["frame"], [box(*b) for b in frame_slot_boxes()])
+
+# v6.1 (2026-11-10): FRAME SCREW HOLES WIDER. Printed, the frame's four deck-screw holes were
+# too tight for stock M2 pan-heads: the head pocket under the top plate is 5.05 mm across and
+# the hole through the 1.27 mm plate 2.28. Now 6.0 and 2.6. Above z 46 the pocket is a closed
+# ring with 0.9 mm or more of wall left; below, it is already open on one side.
+FRAME_SCREW_POCKET_D, FRAME_SCREW_HOLE_D = 6.0, 2.6
+
+
+def frame_screw_cutters():
+    out = []
+    for x, y in FRAME_SCREWS:
+        out.append(Part.makeCylinder(FRAME_SCREW_POCKET_D / 2, FRAME_SCREW_Z - 36.0, V(x, y, 36.0)))
+        out.append(Part.makeCylinder(FRAME_SCREW_HOLE_D / 2, 4.0, V(x, y, FRAME_SCREW_Z - 0.5)))
+    return out
+
+SHAPES["frame"] = cad.cut(SHAPES["frame"], frame_screw_cutters())
+deck = cad.cut(deck, [box(*b) for b in spine_notch_boxes()])
+
+# v6.1 (2026-11-10): DECK PRINT SPLIT AND SCREW JOINTS. The deck prints as part 1 (the tray
+# floor and everything above, z >= FLOOR_Z0) and part 2, which is TWO pieces: the spine and
+# the head (below the floor they do not meet). Until now the split lived only in the print
+# STLs; here it is modelled. The walls are 2 mm, too thin for cad.split's lip (it says so), so
+# the joint is the printed one: each piece's walls stand KEY_H = 0.55 mm up into a matching
+# recess in part 1's underside (KEY_GAP over them; not over the head's front wall, where the
+# window leaves slivers too thin to print). It was glued; now screws hold it, and every joint
+# takes screws FROM BOTH SIDES.
+#   The screws are the kit's (MEASURED by hand, 2026-11-10): M2 thread-forming, a 4.5 mm pan
+# head about 2 mm tall, a 6 mm shank. Each goes through a CLEAR_D hole in the part it enters
+# and cuts its thread in a PILOT_D pilot PILOT_DEPTH deep in the other; with the head down,
+# 3.9..4.7 mm of thread bites. A head that goes INTO a part sits in a HEAD_POCKET_D pocket.
+#   Deck part 1 to the spine / the head, from above: heads on part 1's floor (they stand 2 mm,
+# under the board's 5 mm gap; checked against the ribbons), into columns on part 2 that stand
+# on ledges fused to its walls - spine: x +-15.5 in front (the lead holes end at |x| 12.5),
+# x 0 behind; head: x +-18 on the back of its rear wall (the ribbons drop at x -9 and +10).
+#   From below: heads under ledges on part 2, up into columns that hang from part 1's floor -
+# spine: x +-15.5 behind it; head: x +-10. Open air under each ledge, for the screwdriver.
+#   The deck to the frame, from below: the four corner screws (FRAME SCREW HOLES WIDER). From
+# above: two more, down through pads at the foot of the spine's end walls (x 0, between the
+# lead holes) into pilots in the frame's solid ends; reach them through the floor's lead slot
+# before the board goes in. |x| <= 18.1 keeps every column inside the spine's outline, where
+# the femurs never come.
+SPLIT_Z, KEY_H, KEY_GAP = FLOOR_Z0, 0.55, 0.05
+KIT_SCREW = {"d": 2.0, "head_d": 4.5, "head_h": 2.0, "shank": 6.0}
+CLEAR_D, PILOT_D, PILOT_DEPTH, HEAD_POCKET_D = 2.4, 1.7, 5.0, KIT_SCREW["head_d"] + 0.5
+COL_R = 2.6                                    # a column round a pilot: 1.75 mm of wall
+FT_TOP = FLOOR_Z0 + WALL                       # part 1's floor top
+# (x, y, the wall face its ledge stands against: y, +1 / -1 = the side the ledge is on, ledge z)
+# (front-left of the spine is from below: port 11's ribbon lies flat over the floor there)
+DOWN = {"spine": [(15.5, -41.5, -SPINE_Y, -1, 62.0), (0.0, 41.5, SPINE_Y, 1, 62.0)],
+        "head": [(18.0, -67.0, Y0 + WALL, 1, HEAD_Z0), (-18.0, -67.0, Y0 + WALL, 1, HEAD_Z0)]}
+UP = {"spine": [(-15.5, -42.3, -SPINE_Y, -1, 66.0), (15.5, 42.3, SPINE_Y, 1, 66.0), (-15.5, 42.3, SPINE_Y, 1, 66.0)],
+      "head": [(10.0, -65.5, Y0 + WALL, 1, 66.0), (-10.0, -65.5, Y0 + WALL, 1, 66.0)]}
+FRAME_DOWN = ((0.0, -34.8), (0.0, 34.8))
+PAD_T = 2.0
+
+
+def split_deck(d):
+    """(part 1, {"spine": piece, "head": piece}), the key on each piece, the recess in part 1."""
+    big = box(-200, 200, -300, 300, 0, SPLIT_Z)
+    lower, upper = d.common(big), d.cut(big)
+    # the walls' section just under the split, raised: z SPLIT_Z - 0.1 .. SPLIT_Z + KEY_H, so
+    # it overlaps its piece by 0.1; none on the head's front wall (the window's slivers)
+    key = lower.common(box(-200, 200, HY0 + WALL + 0.5, 300, SPLIT_Z - KEY_H - 0.1, SPLIT_Z))
+    key.translate(V(0, 0, KEY_H))
+    lifted = key.copy(); lifted.translate(V(0, 0, KEY_GAP))
+    pieces = {}
+    for s in lower.Solids:
+        name = "head" if s.BoundBox.YMax < Y0 + WALL + 0.5 else "spine"
+        ks = [k for k in key.Solids if k.common(s).Volume > 1e-3]
+        pieces[name] = cad.fuse_one(s, *ks)
+    return cad.cut(upper, [key, lifted]), pieces
+
+
+def cyl(r, x, y, z0, z1):
+    return Part.makeCylinder(r, z1 - z0, V(x, y, z0))
+
+
+def ledge(x, y, wy, side, z0, t=2.0):
+    """A ledge round (x, y) reaching 0.1 into the wall face at y = wy."""
+    y0, y1 = sorted((wy - side * 0.1, y + side * COL_R))
+    return cad.fuse_one(box(x - COL_R, x + COL_R, y0, y1, z0, z0 + t), cyl(COL_R, x, y, z0, z0 + t))
+
+
+deck_p1, pieces = split_deck(deck)
+joint_screws, JOINT_LOG = [], []
+for name in ("spine", "head"):
+    p = pieces[name]
+    for x, y, wy, side, lz in DOWN[name]:
+        # from above: through part 1's floor into a column on a ledge on part 2
+        top = SPLIT_Z - 0.1
+        p = cad.fuse_one(p, ledge(x, y, wy, side, lz), cyl(COL_R, x, y, lz + 1.0, top))
+        p = cad.cut(p, cyl(PILOT_D / 2, x, y, top - PILOT_DEPTH, top + 0.1))
+        deck_p1 = cad.cut(deck_p1, cyl(CLEAR_D / 2, x, y, SPLIT_Z - 0.5, FT_TOP + 0.5))
+        joint_screws.append(cad.screw("pan_phillips", "M2", KIT_SCREW["shank"], at=(x, y, FT_TOP), axis="-Z"))
+        JOINT_LOG.append(("%s, from above" % name, x, y, FT_TOP, -1))
+    for x, y, wy, side, lz in UP[name]:
+        # from below: the head under a ledge on part 2, up into a column hanging from part 1
+        p = cad.fuse_one(p, ledge(x, y, wy, side, lz))
+        p = cad.cut(p, cyl(CLEAR_D / 2, x, y, lz - 0.5, lz + 2.5))
+        bot = lz + 2.0 + 0.1
+        deck_p1 = cad.fuse_one(deck_p1, cyl(COL_R, x, y, bot, SPLIT_Z + 0.5))
+        deck_p1 = cad.cut(deck_p1, cyl(PILOT_D / 2, x, y, bot - 0.1, bot + PILOT_DEPTH))
+        joint_screws.append(cad.screw("pan_phillips", "M2", KIT_SCREW["shank"], at=(x, y, lz), axis="+Z"))
+        JOINT_LOG.append(("%s, from below" % name, x, y, lz, 1))
+    pieces[name] = p
+# the deck to the frame from above: pads at the foot of the spine's end walls, pilots in the frame
+sp = pieces["spine"]
+for x, y in FRAME_DOWN:
+    side = 1 if y > 0 else -1
+    wy = side * (SPINE_Y - WALL)                # the end wall's inner face
+    y0, y1 = sorted((wy + side * 0.1, y - side * 3.0))
+    sp = cad.fuse_one(sp, box(x - 3.0, x + 3.0, y0, y1, FRAME_TOP, FRAME_TOP + PAD_T))
+    sp = cad.cut(sp, cyl(CLEAR_D / 2, x, y, FRAME_TOP - 0.5, FRAME_TOP + PAD_T + 0.5))
+    SHAPES["frame"] = cad.cut(SHAPES["frame"], cyl(PILOT_D / 2, x, y, FRAME_TOP - PILOT_DEPTH, FRAME_TOP + 0.1))
+    joint_screws.append(cad.screw("pan_phillips", "M2", KIT_SCREW["shank"], at=(x, y, FRAME_TOP + PAD_T), axis="-Z"))
+    JOINT_LOG.append(("frame, from above", x, y, FRAME_TOP + PAD_T, -1))
+pieces["spine"] = sp
+deck_p2 = Part.makeCompound([pieces["spine"], pieces["head"]])
+deck = cad.fuse_one(deck_p1, pieces["spine"], pieces["head"])   # the whole deck, for the checks
 
 # === SCREWS (upstream's, where upstream puts them) ===
 screws = [cad.screw("pan_phillips", "M2", 8, at=(x, y, FRAME_SCREW_Z), axis="+Z") for x, y in FRAME_SCREWS]
 screws += [cad.screw("pan_phillips", "M2", 8, at=(x, y, BOTTOM_SCREW_Z), axis="+Z") for x, y in BOTTOM_SCREWS]
+screws += joint_screws
 
 # === OBJECTS ===
 for n in UPSTREAM:
     o = doc.addObject("Part::Feature", n)
     o.Shape = SHAPES[n]
     o.ViewObject.ShapeColor = cad.color(COLOURS[n.split("_")[0]])
-for name, shape in (("Deck", deck), ("Lid", lid)):
+for name, shape in (("Deck_part1", deck_p1), ("Deck_spine", pieces["spine"]), ("Deck_head", pieces["head"]),
+                    ("Lid", lid)):
     o = doc.addObject("Part::Feature", name)
     o.Shape = shape
-    o.ViewObject.ShapeColor = cad.color(COLOURS[name])
+    o.ViewObject.ShapeColor = cad.color(COLOURS[name.split("_")[0]])
 for i, s in enumerate(screws + lid_screws):
     o = doc.addObject("Part::Feature", "Screw_%d" % (i + 1))
     o.Shape = s

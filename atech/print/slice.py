@@ -7,7 +7,9 @@ homing and Z probing: the printer then starts printing in the air. This script r
 each profile's `inherits` chain itself, merges the template G-codes in, and hands the
 CLI flat profiles.
 
-    python slice.py out_dir [printer ...]     # printers: h2s h2d x2d p2s x1c
+    python slice.py out_dir [printer ...]     # printers: see PRINTERS (default: all)
+    python slice.py out_dir p2s --parts stl_wires --name atech_crab_wires   # another set of parts
+    python slice.py out_dir h2s --parts stl_all --name atech_crab_everything --project   # unsliced project
 """
 import json
 import pathlib
@@ -20,6 +22,8 @@ CLI = APP / "MacOS/BambuStudio"
 PROFILES = APP / "Resources/profiles/BBL"
 HERE = pathlib.Path(__file__).parent
 STL = sorted((HERE / "stl").glob("*.stl"))
+NAME = "atech_crab"
+PROJECT = False      # --project: an unsliced Bambu Studio project .3mf (parts placed, settings in), to share
 
 PRINTERS = {
     "h2s": ("Bambu Lab H2S 0.4 nozzle", "0.20mm Standard @BBL H2S", "@BBL H2S"),
@@ -27,9 +31,17 @@ PRINTERS = {
     "x2d": ("Bambu Lab X2D 0.4 nozzle", "0.20mm Standard @BBL X2D", "@BBL X2D"),
     "p2s": ("Bambu Lab P2S 0.4 nozzle", "0.20mm Standard @BBL P2S", "@BBL P2S"),
     "x1c": ("Bambu Lab X1 Carbon 0.4 nozzle", "0.20mm Standard @BBL X1C", "@BBL X1C"),
+    "x1": ("Bambu Lab X1 0.4 nozzle", "0.20mm Standard @BBL X1C", "@BBL X1"),
+    "x1e": ("Bambu Lab X1E 0.4 nozzle", "0.20mm Standard @BBL X1C", "@BBL X1C"),
+    "p1s": ("Bambu Lab P1S 0.4 nozzle", "0.20mm Standard @BBL X1C", "@BBL P1S"),
+    "a1": ("Bambu Lab A1 0.4 nozzle", "0.20mm Standard @BBL A1", "@BBL A1"),
+    "a1m": ("Bambu Lab A1 mini 0.4 nozzle", "0.20mm Standard @BBL A1M", "@BBL A1M"),
+    "a2l": ("Bambu Lab A2L 0.4 nozzle", "0.20mm Standard @BBL A2L", "@BBL A2L"),
+    "h2c": ("Bambu Lab H2C 0.4 nozzle", "0.20mm Standard @BBL H2C", "@BBL H2C"),
+    "h2dp": ("Bambu Lab H2D Pro 0.4 nozzle", "0.20mm Standard @BBL H2DP", "@BBL H2DP"),
 }
 FILAMENTS = {"pla": "Bambu PLA Basic", "petg": "Bambu PETG Basic"}
-JOBS = [("h2s", "pla"), ("h2d", "pla"), ("x2d", "pla"), ("p2s", "pla")]   # the printers we have; PLA only
+JOBS = [(p, "pla") for p in PRINTERS]   # every Bambu printer with a PLA Basic profile (the P1P: use the P1S file)
 
 # Supports where the parts need them: tree, from the build plate only, so no support
 # grows on a part's own surface (the servo pockets stay clean).
@@ -83,7 +95,7 @@ GAP = 10.0   # mm between parts: room for the auto brim and tree supports
 
 
 def layout(machine, out):
-    """Place the parts on plates, shelf by shelf, and write each plate's parts to
+    """Place the parts on plates (MaxRects, see below) and write each plate's parts to
     out/plate<n>/. Whatever does not fit on a plate goes on the next: on a 256 mm bed
     that makes two plates, each its own file, so every print is a plain one-plate job.
     (The CLI's own arrange also spills onto a second plate, inside one file.)"""
@@ -103,24 +115,44 @@ def layout(machine, out):
     todo = []
     for f in STL:
         m = trimesh.load(f, force="mesh")
-        w, h = m.extents[:2]
-        if w > h:   # long side along y, so shelves pack tighter
-            m.apply_transform(trimesh.transformations.rotation_matrix(1.5707963, [0, 0, 1]))
         m.apply_translation(-m.bounds[0])
         todo.append((f.name, m))
-    todo.sort(key=lambda t: -t[1].extents[1])
+    # MaxRects (best short side fit): each part's footprint plus GAP, into the free rectangles
+    # left on the plate, turned 90 degrees where that fits better; biggest parts first, so
+    # small ones fill the gaps beside them. What does not fit goes on the next plate.
+    todo.sort(key=lambda t: -t[1].extents[0] * t[1].extents[1])
     plates = []
     while todo:
-        x, y, shelf, placed, left = x_min, y_min, 0.0, [], []
+        free, placed, left = [(x_min, y_min, x_max - x_min + GAP, y_max - y_min + GAP)], [], []
         for name, m in todo:
-            w, h = m.extents[:2]
-            if x + w > x_max:
-                x, y, shelf = x_min, y + shelf + GAP, 0.0
-            if y + h > y_max:
+            best = None
+            for rot in (False, True):
+                w, h = m.extents[:2] + GAP
+                if rot: w, h = h, w
+                for fx, fy, fw, fh in free:
+                    if w <= fw + 1e-6 and h <= fh + 1e-6:
+                        score = (min(fw - w, fh - h), max(fw - w, fh - h))
+                        if best is None or score < best[0]:
+                            best = (score, fx, fy, w, h, rot)
+            if best is None:
                 left.append((name, m))
                 continue
-            placed.append((name, m.copy().apply_translation([x, y, 0])))
-            x, shelf = x + w + GAP, max(shelf, h)
+            _, px, py, w, h, rot = best
+            q = m.copy()
+            if rot:
+                q.apply_transform(trimesh.transformations.rotation_matrix(1.5707963, [0, 0, 1]))
+                q.apply_translation(-q.bounds[0])
+            placed.append((name, q.apply_translation([px, py, 0])))
+            nf = []
+            for fx, fy, fw, fh in free:   # split every free rectangle the part overlaps
+                if px >= fx + fw or px + w <= fx or py >= fy + fh or py + h <= fy:
+                    nf.append((fx, fy, fw, fh)); continue
+                if px > fx: nf.append((fx, fy, px - fx, fh))
+                if px + w < fx + fw: nf.append((px + w, fy, fx + fw - px - w, fh))
+                if py > fy: nf.append((fx, fy, fw, py - fy))
+                if py + h < fy + fh: nf.append((fx, py + h, fw, fy + fh - py - h))
+            free = [a for a in nf if not any(a != b and b[0] <= a[0] and b[1] <= a[1] and
+                                             a[0] + a[2] <= b[0] + b[2] and a[1] + a[3] <= b[1] + b[3] for b in nf)]
         if not placed:
             raise SystemExit(f"{machine}: {todo[0][0]} does not fit on the bed")
         folder = out / f"plate{len(plates) + 1}"
@@ -153,8 +185,8 @@ def slice_one(printer, fil, out_dir):
         plates = layout(machine, parts)
         for i, stls in enumerate(plates, 1):
             tag = f"_plate{i}" if len(plates) > 1 else ""
-            out = out_dir / f"atech_crab_{fil}_{printer}{tag}.gcode.3mf"
-            cmd = [str(CLI), "--arrange", "0", "--orient", "0", "--slice", "0",
+            out = out_dir / f"{NAME}_{fil}_{printer}{tag}{'' if PROJECT else '.gcode'}.3mf"
+            cmd = [str(CLI), "--arrange", "0", "--orient", "0", *([] if PROJECT else ["--slice", "0"]),
                    "--load-settings", f"{paths['machine']};{paths['process']}",
                    "--load-filaments", str(paths["filament"]),
                    "--export-3mf", str(out), *map(str, stls)]
@@ -167,9 +199,20 @@ def slice_one(printer, fil, out_dir):
 
 
 if __name__ == "__main__":
-    out_dir = pathlib.Path(sys.argv[1])
+    args = sys.argv[1:]
+    if "--project" in args:
+        args.remove("--project"); PROJECT = True
+    for flag in ("--parts", "--name"):
+        if flag in args:
+            i = args.index(flag)
+            if flag == "--parts":
+                STL = sorted((HERE / args[i + 1]).glob("*.stl"))
+            else:
+                NAME = args[i + 1]
+            del args[i:i + 2]
+    out_dir = pathlib.Path(args[0])
     out_dir.mkdir(parents=True, exist_ok=True)
-    want = set(sys.argv[2:])
+    want = set(args[1:])
     for printer, fil in JOBS:
         if not want or printer in want:
             slice_one(printer, fil, out_dir)

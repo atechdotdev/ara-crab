@@ -18,7 +18,7 @@ the legs and a **lid** that closes it. Both come from Atech Atelier's "Sesame wa
 | Firmware (`firmware/project.yaml`) | Builds with the Atech SDK and runs on the SDK's emulated board: all modules start, every move plays |
 | Walking | Run in simulation (emulated board + MuJoCo): the motion sensor holds the walk within about 20° over ten cycles |
 | Servo driver (`mg90s_pair`) | MG90S pulse range (500–2400 µs). Builds and runs on the emulated board; the earlier SG90 version drove an SG90 on a real 14-port board. **Not yet tried with MG90S on a board** |
-| Deck and lid (v4) | Pass Atech Atelier's fit check in CAD. **Not yet printed or assembled** |
+| Deck and lid (v5) | Pass Atech Atelier's fit check in CAD. **Not yet printed or assembled** |
 
 Print and test-fit the deck on the frame, with the servos in, before you print more than one set.
 
@@ -87,8 +87,8 @@ The [PDF](docs/atech_crab_assembly.pdf) has each step with pictures. In short:
 | 5 | back right | R2 hip | R4 knee |
 
 Each port is a 6-pin header: 1 +12 V, 2 +5 V, 3 +3.3 V, 4 GND, 5 line A, 6 line B. Run the signal and GND
-jumpers out through the slot at each port. Both sides have slots and lead notches (ports 2–5 on the right,
-10–13 on the left), so a lead can leave on either side. Power the servos from the 5 V supply (red to +, brown to −), and
+jumpers out through the slot at each port. Both sides have slots and lead notches (ports 2–6 on the right,
+10–14 on the left), so a lead can leave on either side. Power the servos from the 5 V supply (red to +, brown to −), and
 join the supply's − to a port's GND.
 
 > **+12 V sits next to +5 V, and which end of the header is pin 1 is not marked.** Measure before you wire:
@@ -158,6 +158,7 @@ atech/
 ├── cad/
 │   ├── sesame_atech_wired.py   the deck and lid (Atech Atelier, FreeCAD), with the wire openings
 │   ├── cut_openings_left.py    the v4 left-side openings, cut into the print STLs
+│   ├── cut_openings_back.py    the v5 openings at ports 6 and 14, cut into the print STLs
 │   ├── print_to_model.json     each print STL's place in the CAD frame
 │   └── review.png
 └── docs/
@@ -173,5 +174,5 @@ Apache-2.0, like Sesame: see [`LICENSE`](../LICENSE) and [`NOTICE`](../NOTICE).
 
 - **Sesame** by Dorian Todd ([dorianborian/sesame-robot](https://github.com/dorianborian/sesame-robot)),
   Apache-2.0: the frame, servos, legs and moves.
-- **Deck and lid**: Atech Atelier's "Sesame walker" 0.1.3, with wire openings added on both sides (v4).
+- **Deck and lid**: Atech Atelier's "Sesame walker" 0.1.3, with wire openings added on both sides (v4) and at ports 6 and 14 (v5).
 - **Firmware**: built with the [Atech SDK](https://github.com/atechdotdev/python-sdk).

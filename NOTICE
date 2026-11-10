@@ -21,6 +21,10 @@ The Sesame parts in atech/print/stl/ (internal frame, bottom cover, legs) are
 Sesame's parts, taken from sesame-ml's model of Sesame
 (https://github.com/lukehollis/sesame-ml, Apache-2.0) and turned to their print
 orientation.
+The internal frame is modified (v6, 2026-11-09): eight lead slots, 9 x 3.4 mm,
+cut up from its underside wire channels (Internal-Frame-v121-wired.stl).
+Its four deck-screw holes are widened (v6.1, 2026-11-10): head pocket 6.0 mm,
+through-hole 2.6 mm.
 
 "Sesame" is the name of Dorian Todd's project. It is used here only to say
 where Atech-crab comes from; Atech-crab is not made or endorsed by it.

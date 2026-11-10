@@ -11,7 +11,7 @@ an Atech screen shows the face, an Atech motion sensor keeps the walk on course,
 `project.yaml` for the [Atech SDK](https://pypi.org/project/atech/) (`pip install atech`).
 
 **Start here: [`atech/`](atech/README.md)**: status, parts, the [3D printing guide](atech/print/README.md) and print files for Bambu H2S, H2D, X2D and P2S,
-the assembly guide ([PDF](atech/docs/atech_crab_assembly.pdf), [video](atech/docs/atech_crab_assembly.mp4)),
+the assembly guide ([PDF, v6](atech/docs/atech_crab_assembly_v6.pdf), [video, v4](atech/docs/atech_crab_assembly.mp4)),
 wiring and software.
 
 This repository is a fork of Sesame (by way of [seunyboyxu/New_Spyder](https://github.com/seunyboyxu/New_Spyder))
