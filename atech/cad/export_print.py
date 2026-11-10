@@ -4,7 +4,7 @@ its print orientation (print_to_model.json maps print -> model; this writes mode
     freecadcmd -c "exec(open('export_print.py').read())"      # Atech Atelier's freecadcmd, from atech/cad
 
 From v6.1 the deck and the frame are made here, not cut as meshes: deck part 1, deck part 2
-(the spine and the head, two pieces in one file), the lid and Sesame's internal frame with its
+(v6.2: the spine and the head, each its own file, printed upright with their snap hooks up), the lid and Sesame's internal frame with its
 lead slots and screw holes. It also reports each joint screw's thread: the kit's M2 screw,
 6 mm shank, how much of it passes through clear plastic and how much cuts a thread.
 """
@@ -58,7 +58,8 @@ print("joint screws:", len(g["JOINT_LOG"]), "problems:", bad)
 # --- the print STLs
 maps = json.load(open(os.path.join(HERE, "print_to_model.json")))
 OUTPUTS = [("part1", g["deck_p1"], "deck_part1_plate.stl"),
-           ("part2", Part.makeCompound([g["pieces"]["spine"], g["pieces"]["head"]]), "deck_part2_spine_and_head.stl"),
+           ("spine", g["pieces"]["spine"], "deck_part2a_spine.stl"),      # v6.2: upright, the hooks up
+           ("head", g["pieces"]["head"], "deck_part2b_head.stl"),
            ("lid", g["lid"], "lid_print_upside_down.stl"),
            ("frame", g["SHAPES"]["frame"], "Internal-Frame-v121-wired.stl")]
 for key, shape, name in OUTPUTS:

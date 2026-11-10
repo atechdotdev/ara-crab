@@ -1,7 +1,7 @@
 # 3D Printing Guide
 
-Atech-crab is 13 printed parts: Sesame's bottom cover and eight leg parts, unchanged, Sesame's internal frame with
-eight lead slots added, plus a new **deck** (two parts, glued) and **lid** that hold the Atech board. Print everything in **PLA**.
+Atech-crab is 14 printed parts: Sesame's bottom cover and eight leg parts, unchanged, Sesame's internal frame with
+eight lead slots added, plus a new **deck** (three parts that snap together) and **lid** that hold the Atech board. Print everything in **PLA**.
 
 > [!NOTE]
 > **Not printed yet.** The deck and lid pass Atech Atelier's fit check in CAD, but nobody has printed and
@@ -59,7 +59,7 @@ it should go down on the plate with every part and its brim. If the nozzle draws
 
 ## Other printers: slice the STLs
 
-All 13 STLs are in [`stl/`](stl/), already the right way up: load them and don't rotate them.
+All 14 STLs are in [`stl/`](stl/), already the right way up: load them and don't rotate them.
 
 ### Recommended settings
 
@@ -83,7 +83,8 @@ supports; either works for Sesame's parts.
 | Internal frame, with lead slots | Sesame, modified | 1 | [Internal-Frame-v121-wired.stl](stl/Internal-Frame-v121-wired.stl) | as in the STL |
 | Bottom cover | Sesame | 1 | [Bottom-Cover-v121.stl](stl/Bottom-Cover-v121.stl) | as in the STL |
 | Deck part 1 (plate) | Atech-crab | 1 | [deck_part1_plate.stl](stl/deck_part1_plate.stl) | floor down, walls up |
-| Deck part 2 (spine and head) | Atech-crab | 1 | [deck_part2_spine_and_head.stl](stl/deck_part2_spine_and_head.stl) | as in the STL |
+| Deck part 2a (spine) | Atech-crab | 1 | [deck_part2a_spine.stl](stl/deck_part2a_spine.stl) | upright, snap hooks up |
+| Deck part 2b (head) | Atech-crab | 1 | [deck_part2b_head.stl](stl/deck_part2b_head.stl) | upright, snap hooks up |
 | Lid | Atech-crab | 1 | [lid_print_upside_down.stl](stl/lid_print_upside_down.stl) | **upside down**: the top on the plate |
 
 Sesame's parts are the same meshes as [`hardware/printing/stl`](../../hardware/printing/stl/), laid flat at the
@@ -158,27 +159,27 @@ one holder first and try it in a port before printing the rest.
 ## After printing
 
 1. Remove the brims and the tree supports.
-2. Join deck part 2 (the spine and the head, two pieces) to deck part 1 with the kit's M2 screws (4.5 mm head,
-   6 mm shank). The 0.55 mm key on each piece fits the recess under part 1, so it only goes one way. Every joint
-   takes screws from both sides; use the ones you can reach, all of them for the strongest joint:
-   - **Plate to spine, from above:** 2 screws down through part 1's floor (front right, back middle).
-   - **Plate to spine, from below:** 3 screws up through the ledges (front left, both back corners).
-   - **Plate to head, from above:** 2 screws (left and right, behind the head).
-   - **Plate to head, from below:** 2 screws up through the ledges on the head's back wall.
-   Superglue is optional now.
+2. **Snap the deck together, then screw it.** Set deck part 1 (the plate) floor-down over the spine and the head
+   and press it down: six hooks click over the edge of the floor opening (four on the spine, two on the head behind
+   the screen). That is enough to try it. For strength add 4 screws from above through the plate's floor: front
+   right and back of the spine, left and right behind the head. The 0.55 mm keys fit the recesses under the plate, so
+   it only goes one way. To take it apart, take the screws out and push each hook inward from above.
 3. **Deck to frame:** the 4 corner screws go up from under the frame (head pocket 6.0 mm). Two more can go down
    from above: through the pads at the foot of the spine's front and back walls (reach them through the opening
    in the floor, before the board goes in).
 3. Continue with the [assembly guide (PDF, v6)](../docs/atech_crab_assembly_v6.pdf).
 
-**Screws:** the kit's M2 pan-heads (4.5 mm head, 6 mm shank): up to 6 for the deck to the frame (4 from below,
-2 from above), 2 for the bottom cover, and up to 11 for deck part 1 to part 2 (9 is plenty). Plus 3 × M2×10
-countersunk for the lid.
+**Screws: one kind for the whole body,** the kit's **M2 × 6 mm pan-head self-tapping** (4.5 mm head): 4 + 2
+deck to frame, 4 deck plate to spine and head, 3 lid (their heads sink flush in the lid), 2 bottom cover, and
+Sesame's legs and motor mounts. The only other kind: **M2.5 × 5 mm machine screws**, 8, for the servo horns
+(they thread into the servos' metal shafts).
 
 ## Versions
 
 | Version | Date | Changed |
 | ------- | ---- | ------- |
+| v6.3 | 2026-11-10 | One screw for the whole body (M2 × 6 pan-head): the lid's 3 countersunk M2 × 10 became pan-heads in flush pockets. Deck: the snaps plus 4 screws from above, into columns standing on the spine and the head. Hooks thinner (1.0 % / 1.3 % strain): printed upright, they bend across the layers. |
+| v6.2 | 2026-11-10 | Deck: part 1 snaps onto part 2 with six hooks (no screws, no glue). Part 2 is now two files, the spine and the head, each printed upright with its hooks up. |
 | v6.1 | 2026-11-10 | Frame: the four deck-screw holes wider (head pocket 5.05 → 6.0 mm, through-hole 2.28 → 2.6 mm) for the kit's screws; two pilots for screws from above; lead slots through the rib (no sliver). Deck: the part 1 / part 2 split modelled in Atech Atelier, joined by the kit's M2 screws from both sides (11 in all, each with 4 mm of thread), instead of glue. Made from the model by `export_print.py`. |
 | v6 | 2026-11-09 | 8 lead slots through the internal frame; 8 servo-lead holes and 8 slot notches in the spine (deck part 2); 20 keyholes in the lid for the wire bobbins. |
 | v5 | 2026-11-09 | Slots and lead notches at the back ports 6 and 14 as well, cut round the lid-screw posts. Deck part 1 and the lid only. |

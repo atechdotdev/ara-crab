@@ -212,7 +212,10 @@ if __name__ == "__main__":
             del args[i:i + 2]
     out_dir = pathlib.Path(args[0])
     out_dir.mkdir(parents=True, exist_ok=True)
-    want = set(args[1:])
-    for printer, fil in JOBS:
-        if not want or printer in want:
-            slice_one(printer, fil, out_dir)
+    want = args[1:]          # printers ("x2d"), or printer:filament ("x2d:petg")
+    if any(":" in w for w in want):
+        jobs = [tuple(w.split(":")) if ":" in w else (w, "pla") for w in want]
+    else:
+        jobs = [(p, f) for p, f in JOBS if not want or p in want]
+    for printer, fil in jobs:
+        slice_one(printer, fil, out_dir)

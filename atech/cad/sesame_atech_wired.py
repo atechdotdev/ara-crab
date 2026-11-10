@@ -45,6 +45,7 @@ lead slot; 3 board posts; 4 tray walls up to the board's top face; 5 side bays;
 and the screen's back rib; 8 lid screws into bay bosses.
 """
 import gzip
+import math
 import os
 
 import Part
@@ -187,10 +188,7 @@ lid = cad.cut(cad.fuse_one(plan(TRAY, TOP, LID_TOP), plan(HEADP, TOP, LID_TOP)),
 lid = cad.socket_opening(lid, usb, margin=1.5)
 # a rib down from the lid 0.2 mm behind the screen's top half
 lid = cad.fuse_one(lid, box(SB.XMin + 2.0, SB.XMax - 2.0, SB.YMax + 0.2, SB.YMax + 1.8, TOP + 0.3, LID_TOP - WALL + 0.5))
-lid_screws = []
-for x, y in LID_SCREWS:
-    lid, deck = cad.screw_through(lid, deck, (x, y, LID_TOP), size="M2", ribs=0)
-    lid_screws.append(cad.screw("csk_phillips", "M2", 10, at=(x, y, LID_TOP), axis="-Z"))
+lid_screws = []          # v6.3: the body's one screw, fitted after the keyholes (LID SCREWS)
 
 # === WIRE OPENINGS: USB-C 5 mm lower, servo ports 2-6 and 10-14, SG90 leads ===
 # Wire openings for the Sesame deck and lid, in the model frame (mm), shared by the
@@ -305,6 +303,43 @@ def keyhole_shapes(z0=LID_TOP - WALL - 0.3, z1=LID_TOP + 1.0):
 
 lid = cad.cut(lid, keyhole_shapes())
 
+# v6.3 (2026-11-10): LID SCREWS - one screw for the whole body. The lid took 3 countersunk
+# M2 x 10; now the body's one screw, the kit's M2 x 6 pan-head (KIT_SCREW, below: 4.5 mm head
+# 2 mm tall, 6 mm shank). Its head sinks flush in a 5.0 mm pocket 2.1 deep in the lid's 2 mm
+# top, so a pad 2.3 mm thick under the skin carries it, and it cuts its thread in the bay's
+# boss (cad.screw_boss, its top 0.1 under the pad): 2.2 mm through, 3.7 of thread. Each pad
+# is trimmed clear of the bobbin pegs' slide paths under the skin (port 12's bobbin sits over
+# the screw at (-33.3, -2.5)). The lid prints top-down: the pockets are on the plate side.
+LID_PAD_T, LID_PAD_R = 2.3, 3.0
+LID_HEAD_POCKET_D, LID_HEAD_POCKET_H = 5.0, 2.1
+LID_CLEAR_D = 2.4
+skin_in = LID_TOP - WALL                       # the lid top's inner face
+peg_paths = []
+for n, xl, y in keyhole_pegs():
+    sx = 1 if xl > 0 else -1
+    xe = xl - sx * KEY_TRAVEL
+    peg_paths.append(cad.fuse_one(Part.makeCylinder(2.7 + 0.3, 6.0, V(xl, y, skin_in - 5.0)),
+                                  Part.makeCylinder(2.7 + 0.3, 6.0, V(xe, y, skin_in - 5.0)),
+                                  box(min(xl, xe), max(xl, xe), y - 3.0, y + 3.0, skin_in - 5.0, skin_in + 1.0)))
+for x, y in LID_SCREWS:
+    pad = Part.makeCylinder(LID_PAD_R, LID_PAD_T + 0.1, V(x, y, skin_in - LID_PAD_T))
+    hits = [pp for pp in peg_paths if pad.common(pp).Volume > 1e-6]
+    if hits:
+        pad = cad.cut(pad, hits)
+    lid = cad.fuse_one(lid, pad)
+    lid = cad.cut(lid, [Part.makeCylinder(LID_HEAD_POCKET_D / 2, LID_HEAD_POCKET_H + 1.0, V(x, y, LID_TOP - LID_HEAD_POCKET_H)),
+                        Part.makeCylinder(LID_CLEAR_D / 2, LID_PAD_T + WALL + 1.0, V(x, y, skin_in - LID_PAD_T - 0.5))])
+    # the column: BACK_BOSS_R = 2.4, the keep-out the back ports' slots were cut round (2.45 and 2.6 left slivers), from the
+    # bay floor to 0.1 under the pad, its pilot PILOT_D 5 deep
+    col_top = skin_in - LID_PAD_T - 0.1
+    deck = cad.fuse_one(deck, Part.makeCylinder(BACK_BOSS_R, col_top - (FT - 0.5), V(x, y, FT - 0.5)))
+    deck = cad.cut(deck, Part.makeCylinder(1.7 / 2, 5.1, V(x, y, col_top - 5.0)))
+    lid_screws.append(cad.screw("pan_phillips", "M2", 6, at=(x, y, LID_TOP - LID_HEAD_POCKET_H), axis="-Z"))
+# the back bays' inner corners, square up to the back ports' lead notches (y 38): the notch cut
+# through the corner's round left a 0.03 mm knife edge there (Atelier's check, v6.3)
+deck = cad.fuse_one(deck, *[box(*sorted((sx * 32.0, sx * 36.1)), SPINE_Y - 2.7, BAY_Y[1] - WALL, FT - 0.5, SLOT_Z[0])
+                            for sx in (1, -1)])
+
 # v6: SPINE LEAD HOLES. Eight holes, one per servo, through the spine's front and back end
 # walls (y +-37.61..39.61), so each servo lead goes straight into the spine and up its
 # inside to the gap under the board. The side walls can't have them: the femurs pass
@@ -413,7 +448,21 @@ DOWN = {"spine": [(15.5, -41.5, -SPINE_Y, -1, 62.0), (0.0, 41.5, SPINE_Y, 1, 62.
         "head": [(18.0, -67.0, Y0 + WALL, 1, HEAD_Z0), (-18.0, -67.0, Y0 + WALL, 1, HEAD_Z0)]}
 UP = {"spine": [(-15.5, -42.3, -SPINE_Y, -1, 66.0), (15.5, 42.3, SPINE_Y, 1, 66.0), (-15.5, 42.3, SPINE_Y, 1, 66.0)],
       "head": [(10.0, -65.5, Y0 + WALL, 1, 66.0), (-10.0, -65.5, Y0 + WALL, 1, 66.0)]}
-FRAME_DOWN = ((0.0, -34.8), (0.0, 34.8))
+FRAME_DOWN = ((0.0, -34.3), (0.0, 34.3))    # 34.3: the screwdriver clears the end snap hooks
+# v6.2 (2026-11-10): DECK SNAPS - deck part 1 clicks onto the spine and the head, no screws
+# (DECK_JOINT = "snap"). "screws" brings back the kit-screw joints above instead.
+# v6.3: DECK_JOINT = "both" - the snaps for a quick fit AND kit screws from above for strength.
+# The screw columns must not hang under part 1's floor (it prints floor-down), so each stands
+# on part 2 from its bottom (the spine's z 53.8, the head's floor), printed upright with no
+# overhang, against the wall it reaches 0.7 into. Heads on part 1's floor: front right and
+# back of the spine (front left lies under port 11's ribbon), left and right behind the head.
+DECK_JOINT = "both"
+if DECK_JOINT == "snap":
+    DOWN, UP = {"spine": [], "head": []}, {"spine": [], "head": []}
+elif DECK_JOINT == "both":
+    DOWN = {"spine": [(15.5, -41.5, -SPINE_Y, -1, FRAME_TOP), (0.0, 41.5, SPINE_Y, 1, FRAME_TOP)],
+            "head": [(18.0, -67.0, Y0 + WALL, 1, HEAD_Z0), (-18.0, -67.0, Y0 + WALL, 1, HEAD_Z0)]}
+    UP = {"spine": [], "head": []}
 PAD_T = 2.0
 
 
@@ -451,7 +500,10 @@ for name in ("spine", "head"):
     for x, y, wy, side, lz in DOWN[name]:
         # from above: through part 1's floor into a column on a ledge on part 2
         top = SPLIT_Z - 0.1
-        p = cad.fuse_one(p, ledge(x, y, wy, side, lz), cyl(COL_R, x, y, lz + 1.0, top))
+        if DECK_JOINT == "both":            # a full-height column from the piece's bottom
+            p = cad.fuse_one(p, cyl(COL_R, x, y, lz, top))
+        else:
+            p = cad.fuse_one(p, ledge(x, y, wy, side, lz), cyl(COL_R, x, y, lz + 1.0, top))
         p = cad.cut(p, cyl(PILOT_D / 2, x, y, top - PILOT_DEPTH, top + 0.1))
         deck_p1 = cad.cut(deck_p1, cyl(CLEAR_D / 2, x, y, SPLIT_Z - 0.5, FT_TOP + 0.5))
         joint_screws.append(cad.screw("pan_phillips", "M2", KIT_SCREW["shank"], at=(x, y, FT_TOP), axis="-Z"))
@@ -478,12 +530,88 @@ for x, y in FRAME_DOWN:
     joint_screws.append(cad.screw("pan_phillips", "M2", KIT_SCREW["shank"], at=(x, y, FRAME_TOP + PAD_T), axis="-Z"))
     JOINT_LOG.append(("frame, from above", x, y, FRAME_TOP + PAD_T, -1))
 pieces["spine"] = sp
+
+# DECK SNAPS (v6.2): cad.snap_fit_cantilever hooks, placed by hand (cad.snap_fit_pair puts its
+# hooks on the lead slots and holes). Every hook RISES from part 2 - the spine and the head -
+# on the inside of a wall, up through part 1's floor opening, and clips SNAP_ENG = 1.0 mm over
+# the top of part 1's floor at the opening's edge: it holds part 1 down; the keys hold it
+# sideways. Rising, not hanging: part 1 prints floor-down, so nothing may hang below its floor,
+# and the spine and the head print UPRIGHT (each its own file), their hooks standing up.
+#   Spine: the middle of each wall (y 0 between the lead slots at |y| 3.5..12.5, x 0 between
+# the lead holes at |x| 3.5..12.5), 12 mm beams 1.0 thick: 1.0 % strain to clear (v6.3: they
+# bend across the layer lines, printed upright, so the strain is kept low).
+#   Head: two hooks behind the screen on its back wall (HEAD_SNAP_X), 0.8 thick gripping 0.7: 1.3 %.
+# The hook tops stand 2.7 mm under the board. Push part 1 down onto the spine and the head
+# until all six click; to undo one, push its hook inward from above (before the board).
+SNAP_L, SNAP_T, SNAP_ENG, SNAP_CL = 10.0, 1.2, 1.0, 0.2
+SNAP_LEAD = 30.0
+SNAP_LOG = []
+SNAP_SHAPES = []          # each hook's beam, for pictures and the assembly page
+
+
+def _snap_beam(L, w, o, a, p, s_in, z_root, hang):
+    """A cantilever on the inside of a wall whose inner face is at o-coordinate s_in, its hook
+    reaching SNAP_ENG into the wall; `hang`: rooted at z_root and pointing down, else up."""
+    hd = SNAP_ENG + SNAP_CL
+    E = 0.5
+    b = cad.snap_fit_cantilever(L + E, SNAP_T, w, hd, SNAP_LEAD)
+    if hang:
+        b.rotate(V(0, 0, 0), V(0, 1, 0), 180)
+        b.rotate(V(0, 0, 0), V(0, 0, 1), math.degrees(math.atan2(o.y, o.x)) - 180.0)
+        b.translate(o * (s_in - SNAP_CL - SNAP_T) + a * p + V(0, 0, z_root + E))
+        face = z_root - L                       # the retaining face, facing up
+    else:
+        b.rotate(V(0, 0, 0), V(0, 0, 1), math.degrees(math.atan2(o.y, o.x)))
+        b.translate(o * (s_in - SNAP_CL - SNAP_T) + a * p + V(0, 0, z_root - E))
+        face = z_root + L                       # the retaining face, facing down
+    SNAP_LOG.append((o, p, face, 100 * cad.cantilever_strain(L, SNAP_T, SNAP_ENG)))
+    return b, face, hd / math.tan(math.radians(SNAP_LEAD))
+
+
+def _obox(o, a, p, o0, o1, w, z0, z1):
+    """A box in a wall's frame: o-range o0..o1 (outward), along-range p +- w/2, z0..z1."""
+    c0, c1 = o * o0 + a * (p - w / 2), o * o1 + a * (p + w / 2)
+    return box(min(c0.x, c1.x), max(c0.x, c1.x), min(c0.y, c1.y), max(c0.y, c1.y), z0, z1)
+
+
+if DECK_JOINT in ("snap", "both"):
+    X_, Y_ = V(1, 0, 0), V(0, 1, 0)
+
+    def clip_hook(piece, o, a, p, s_in, w, t, z_root, z_root0=None, eng=SNAP_ENG):
+        """A hook RISING from `piece` on the inside of a wall (inner face at o = s_in), up past
+        part 1's floor, its hook reaching SNAP_ENG over the floor's top at the opening's edge:
+        it holds part 1 down. Root block z_root - 3 .. z_root, into the wall."""
+        hd = eng + SNAP_CL
+        L = (FT_TOP + SNAP_CL) - z_root
+        b = cad.snap_fit_cantilever(L + 0.5, t, w, hd, SNAP_LEAD)
+        b.rotate(V(0, 0, 0), V(0, 0, 1), math.degrees(math.atan2(o.y, o.x)))
+        b.translate(o * (s_in - SNAP_CL - t) + a * p + V(0, 0, z_root - 0.5))
+        root = _obox(o, a, p, s_in - SNAP_CL - t - 0.3, s_in + 0.5, w, z_root - 3.0 if z_root0 is None else z_root0, z_root)
+        SNAP_LOG.append((o, p, FT_TOP + SNAP_CL, 100 * cad.cantilever_strain(L, t, eng)))
+        SNAP_SHAPES.append(b.copy())
+        return cad.fuse_one(piece, root, b)
+
+    # the spine: the middle of each wall, clear of the lead slots and holes; 12 mm beams, 1.25 %
+    for o, a, p, s_in, w in [(X_, Y_, 0.0, SPINE - WALL, 5.0), (-X_, Y_, 0.0, SPINE - WALL, 5.0),
+                             (Y_, X_, 0.0, SPINE_Y - WALL, 4.0), (-Y_, X_, 0.0, SPINE_Y - WALL, 4.0)]:
+        pieces["spine"] = clip_hook(pieces["spine"], o, a, p, s_in, w, 1.0, 63.0)
+    # the head: the screen (39.5 wide) and its side ribs fill the side walls, so its hooks rise
+    # on the inside of its BACK wall, in the 3.2 mm behind the screen. The two ribbons cover the
+    # rest of that wall: HEAD_SNAP_X is MEASURED clear of them (x -1..4.5, x >= 15.5) and of the
+    # ribs (|x| >= 19.95). 0.9 mm beams rooted on the head's floor (flush with its bottom): 2 %.
+    HEAD_SNAP_X = (1.75, 17.5)
+    for x in HEAD_SNAP_X:
+        pieces["head"] = clip_hook(pieces["head"], Y_, X_, x, Y0, 4.0, 0.8, 67.0, z_root0=HEAD_Z0, eng=0.7)
+    for o, p, face, eps in SNAP_LOG:
+        print("deck snap: hook toward (%+.0f, %+.0f) at %.1f, over the floor at z %.2f, %.2f %% strain to clear"
+              % (o.x, o.y, p, face, eps))
 deck_p2 = Part.makeCompound([pieces["spine"], pieces["head"]])
 deck = cad.fuse_one(deck_p1, pieces["spine"], pieces["head"])   # the whole deck, for the checks
 
 # === SCREWS (upstream's, where upstream puts them) ===
-screws = [cad.screw("pan_phillips", "M2", 8, at=(x, y, FRAME_SCREW_Z), axis="+Z") for x, y in FRAME_SCREWS]
-screws += [cad.screw("pan_phillips", "M2", 8, at=(x, y, BOTTOM_SCREW_Z), axis="+Z") for x, y in BOTTOM_SCREWS]
+screws = [cad.screw("pan_phillips", "M2", 6, at=(x, y, FRAME_SCREW_Z), axis="+Z") for x, y in FRAME_SCREWS]
+# v6.3: the body's one screw everywhere, M2 x 6 pan-head (the corner four: up through the frame into the deck)
+screws += [cad.screw("pan_phillips", "M2", 6, at=(x, y, BOTTOM_SCREW_Z), axis="+Z") for x, y in BOTTOM_SCREWS]
 screws += joint_screws
 
 # === OBJECTS ===
