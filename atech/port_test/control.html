@@ -80,6 +80,7 @@
 <header>
   <h1>Servo calibration</h1>
   <span id="conn" class="pill bad">no board</span>
+  <button id="connect">Connect</button>
   <span class="step" id="step">–</span>
   <span id="count" class="pill">0 / 8 calibrated</span>
   <button id="walk" class="go">▶ Walk</button>
@@ -394,6 +395,12 @@ document.addEventListener("click", async e => {
     b.disabled = false;
   }
   if (b.id === "flash") return api("/api/flash", {});
+  if (b.id === "connect") {
+    b.disabled = true; b.textContent = "Connecting…";
+    const r = await api("/api/connect", {});
+    b.disabled = false; b.textContent = "Connect";
+    if (!r.ok) alert(r.error);
+  }
 });
 
 async function poll() {
@@ -403,6 +410,7 @@ async function poll() {
     c.textContent = s.flash.running ? "flashing…" : s.connected ? (s.live ? "board live" : "connected") : "no board";
     c.className = "pill " + (s.connected && !s.flash.running ? "ok" : "bad");
     $("#flash").disabled = s.flash.running;
+    if (!$("#connect").disabled) $("#connect").textContent = s.connected ? "Reconnect" : "Connect";
     $("#step").textContent = s.step || "–";
     if (!s.live) live = {};
     else s.ports.forEach((p, i) => live[p] = s.angles[i]);

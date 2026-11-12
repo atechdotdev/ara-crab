@@ -73,6 +73,23 @@ class Board:
             pass
         self.ser = None
 
+    def connect(self):
+        """The page's Connect button: drop the port and open it again now; say what happened."""
+        devs = sorted(glob.glob("/dev/cu.usbmodem*"))
+        if not devs:
+            self.note("connect: no board on USB (check the cable is a data cable; press reset)")
+            return {"ok": False, "error": "No board found on USB. Check the cable (it must carry data) "
+                                          "and that the board has power, or press its reset button."}
+        self.close()
+        self.paused = False
+        for _ in range(20):                      # the reader thread reopens it
+            if self.ser:
+                return {"ok": True, "port": self.ser.port}
+            time.sleep(0.1)
+        self.note(f"connect: could not open {devs[0]} (is atech monitor or another program using it?)")
+        return {"ok": False, "error": f"Found {devs[0]} but could not open it. Close atech monitor "
+                                      "or any other program using the board, then try again."}
+
     def _reader(self):
         while True:
             if self.paused:
@@ -273,6 +290,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(n) or b"{}")
+        if self.path == "/api/connect":
+            return self._send(200, board.connect())
         if self.path == "/api/cmd":
             r = board.call(body["action"], body.get("value", ""))
             if not body.get("quiet"):
