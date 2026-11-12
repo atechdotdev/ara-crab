@@ -1,20 +1,47 @@
 #!/bin/zsh
 # Start the servo calibration page:  ./start   (from atech/port_test)
-# Starts control.py unless it is already running, then opens http://localhost:8766.
-# control.py runs on the same Python as the `atech` command: `pip install atech` brings
-# pyserial (for the board's USB port) with it, and the Flash button runs `atech upload`.
+#
+# Makes (once) a Python environment here in .venv, installs or updates the latest atech
+# from PyPI into it (atech brings pyserial, which control.py needs for the board's USB
+# port), then starts control.py with it unless it is already running and opens
+# http://localhost:8766. The Flash button's `atech upload` uses the same atech.
 cd "${0:A:h}"
-PY=()
-if ATECH=$(whence -p atech); then
-  shebang=$(head -1 "$ATECH")
-  PY=(${=shebang#\#!})                  # e.g. /path/bin/python, or /usr/bin/env python3
+VENV=.venv
+
+if [[ ! -x $VENV/bin/python ]]; then
+  echo "Setting up the Python environment in atech/port_test/$VENV (first run only)…"
+  if whence -p uv >/dev/null; then
+    uv venv -q --python ">=3.10" $VENV || exit 1
+  else
+    PY=""
+    for p in python3.14 python3.13 python3.12 python3.11 python3.10 python3; do
+      if whence -p $p >/dev/null && $p -c "import sys; sys.exit(sys.version_info < (3, 10))"; then
+        PY=$p; break
+      fi
+    done
+    if [[ -z $PY ]]; then
+      echo "atech needs Python 3.10 or newer, and this Mac has none. Install one, e.g.  brew install python"
+      exit 1
+    fi
+    $PY -m venv $VENV || exit 1
+  fi
 fi
-if [[ -z $PY || ! -x $PY[1] ]] || ! $PY -c "import serial" 2>/dev/null; then
-  echo "The atech command was not found. Install it once with:  pip install atech"
+
+echo "Installing the latest atech…"
+if whence -p uv >/dev/null; then
+  uv pip install -q --python $VENV/bin/python --upgrade atech
+else
+  $VENV/bin/python -m pip install -q --upgrade pip atech
+fi
+if ! $VENV/bin/python -c "import atech, serial" 2>/dev/null; then
+  echo "atech is not installed in $VENV (no internet?). Connect and run ./start again."
   exit 1
 fi
+echo "atech $($VENV/bin/python -c 'from importlib.metadata import version; print(version("atech"))')"
+
+export PATH="$PWD/$VENV/bin:$PATH"          # so the Flash button runs this atech
 if ! curl -s -o /dev/null http://localhost:8766/; then
-  $PY control.py &
+  $VENV/bin/python control.py &
   for i in {1..20}; do curl -s -o /dev/null http://localhost:8766/ && break; sleep 0.25; done
 fi
 open http://localhost:8766

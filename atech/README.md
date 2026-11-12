@@ -199,11 +199,14 @@ To test without a robot: `atech emulate atech/firmware --seconds 10` runs the sa
 
 ### Calibrate the servos, with the assembly guide at hand
 
-One local page does both: run `./start` in `atech/port_test` (or `python3 control.py` there) and it opens
-**http://localhost:8766**, the servo test and calibration page. Its **📖 Assembly guide** button opens the
+One local page does both: run `./start` in `atech/port_test` and it opens **http://localhost:8766**, the servo test and calibration page. Its **📖 Assembly guide** button opens the
 animated 3D assembly at http://localhost:8766/assembly. The page finds the board on USB by itself; if it
 says "no board", plug the board in and press **Connect**. The page and `atech monitor` can't share the USB
 port, so close the monitor first.
+
+`./start` sets itself up: the first time, it makes a Python environment in `atech/port_test/.venv`
+(Python 3.10 or newer, with `uv` if you have it); every time, it installs the latest `atech` from PyPI into
+it (that brings `pyserial`, for the USB port) and runs the page with it.
 
 ## Files
 
