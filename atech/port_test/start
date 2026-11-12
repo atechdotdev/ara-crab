@@ -1,9 +1,19 @@
 #!/bin/zsh
 # Start the servo calibration page:  ./start   (from atech/port_test)
 # Starts control.py unless it is already running, then opens http://localhost:8766.
+# control.py talks to the board over USB with pyserial, so pick a Python that has it:
+# the Atech SDK's own Python first, then any python3 on the PATH.
 cd "${0:A:h}"
+PY=""
+for p in ../../../python-sdk/.venv/bin/python3 ~/dev/atech/python-sdk/.venv/bin/python3 $(whence -ap python3); do
+  if [[ -x $p ]] && $p -c "import serial" 2>/dev/null; then PY=$p; break; fi
+done
+if [[ -z $PY ]]; then
+  echo "No Python with pyserial found. Install it once with:  python3 -m pip install --user pyserial"
+  exit 1
+fi
 if ! curl -s -o /dev/null http://localhost:8766/; then
-  python3 control.py &
+  $PY control.py &
   for i in {1..20}; do curl -s -o /dev/null http://localhost:8766/ && break; sleep 0.25; done
 fi
 open http://localhost:8766
