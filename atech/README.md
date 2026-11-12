@@ -197,10 +197,21 @@ atech upload atech/firmware
 
 To test without a robot: `atech emulate atech/firmware --seconds 10` runs the same firmware on an emulated board.
 
+### Calibrate the servos, with the assembly guide at hand
+
+One local page does both: run `./start` in `atech/port_test` (or `python3 control.py` there) and it opens
+**http://localhost:8766**, the servo test and calibration page. Its **📖 Assembly guide** button opens the
+animated 3D assembly at http://localhost:8766/assembly. The server holds the board's USB port, so close
+`atech monitor` first.
+
 ## Files
 
 ```
 atech/
+├── port_test/
+│   ├── start                   starts the calibration page at http://localhost:8766 (guide at /assembly)
+│   ├── control.py, control.html  the servo test and calibration page and its server
+│   └── calibration.json        the saved calibration (former ones in calibrations/)
 ├── firmware/
 │   ├── project.yaml            the firmware: modules, ports, code (written by make_firmware.py)
 │   ├── make_firmware.py        Sesame's movement-sequences.h -> project.yaml

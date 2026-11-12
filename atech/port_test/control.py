@@ -1,6 +1,6 @@
 """Servo test control page: eight MG90S on ports 1-6, 13, 14 and the screen on 9+10.
 
-    python3 control.py            # then open http://localhost:8766
+    python3 control.py            # then open http://localhost:8766  (assembly guide: /assembly)
 
 The server holds the board's USB port (close `atech monitor` first) and reconnects by itself
 when the board comes back. The page moves each servo, runs the test modes and flashes
@@ -22,6 +22,7 @@ import serial
 
 HERE = Path(__file__).resolve().parent
 PAGE = HERE / "control.html"
+GUIDE = HERE.parent / "docs" / "assembly" / "index.html"   # served at /assembly
 CAL = HERE / "calibration.json"
 SNAPS = HERE / "calibrations"          # former calibrations, one file each
 MAKE = HERE / "make_project.py"
@@ -238,6 +239,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/", "/index.html"):
             return self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
+        if self.path in ("/assembly", "/assembly/"):
+            return self._send(200, GUIDE.read_bytes(), "text/html; charset=utf-8")
         if self.path == "/api/cal":
             return self._send(200, load_cal())
         if self.path == "/api/settings":

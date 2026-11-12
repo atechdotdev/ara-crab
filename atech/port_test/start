@@ -1,0 +1,10 @@
+#!/bin/zsh
+# Start the servo calibration page:  ./start   (from atech/port_test)
+# Starts control.py unless it is already running, then opens http://localhost:8766.
+cd "${0:A:h}"
+if ! curl -s -o /dev/null http://localhost:8766/; then
+  python3 control.py &
+  for i in {1..20}; do curl -s -o /dev/null http://localhost:8766/ && break; sleep 0.25; done
+fi
+open http://localhost:8766
+wait
