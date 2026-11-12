@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Servo Calibration</title>
+<style>
+  :root {
+    --bg: #0f1216; --panel: #181d23; --panel2: #1f262e; --line: #2b343e;
+    --text: #e6edf3; --dim: #8b98a5; --accent: #ffd23f; --blue: #3aa0ff;
+    --ok: #3fcf8e; --bad: #ff5d5d; --warn: #ffb02e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+           padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+           position: sticky; top: 0; z-index: 5; }
+  h1 { font-size: 17px; margin: 0 8px 0 0; }
+  .pill { padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--panel2); }
+  .pill.ok { color: var(--ok); } .pill.bad { color: var(--bad); }
+  .step { color: var(--accent); font-family: ui-monospace, Menlo, monospace; flex: 1; min-width: 140px; }
+  button, select { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+           border-radius: 8px; padding: 6px 10px; font: inherit; cursor: pointer; }
+  button:hover, select:hover { border-color: var(--blue); }
+  button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+  button.prim { border-color: var(--ok); color: var(--ok); }
+  button.warn { border-color: #5a4318; color: #ffcf85; }
+  button:disabled { opacity: .4; cursor: default; }
+  main { padding: 16px; max-width: 1240px; margin: 0 auto; }
+  .top { display: grid; grid-template-columns: 300px 1fr; gap: 16px; margin-bottom: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .panel h3 { margin: 0 0 8px; font-size: 13px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  ol { margin: 0; padding-left: 20px; } ol li { margin: 3px 0; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+  .note { color: #ffd9a0; font-size: 12.5px; margin-top: 8px; }
+  #robot text { font: 600 9px -apple-system, sans-serif; fill: var(--text); }
+  #robot .j { cursor: pointer; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--dim); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; transition: border-color .2s; }
+  .card.hot { border-color: var(--accent); }
+  .card.done { box-shadow: inset 0 0 0 1px #1f5a40; }
+  .card.flash { border-color: var(--blue); box-shadow: 0 0 0 3px #3aa0ff55; }
+  .ch { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+  .ch b { font-size: 15px; white-space: nowrap; }
+  .ch select { flex: 1; min-width: 0; }
+  .badge { font-size: 11px; padding: 2px 7px; border-radius: 99px; background: var(--panel2); color: var(--dim); white-space: nowrap; }
+  .badge.ok { color: var(--ok); }
+  svg.dial { display: block; width: 100%; height: auto; margin: 6px 0 0; }
+  .read { display: flex; justify-content: space-between; align-items: baseline; margin: -2px 2px 4px; }
+  .read .big { font: 600 22px ui-monospace, Menlo, monospace; }
+  .read .sm { color: var(--dim); font: 12px ui-monospace, Menlo, monospace; text-align: right; }
+  input[type=range] { width: 100%; accent-color: var(--accent); margin: 6px 0; }
+  .row { display: flex; gap: 6px; margin-top: 6px; } .row button { flex: 1; padding: 6px 0; font-size: 13px; }
+  .dir { margin-top: 8px; font-size: 12.5px; color: var(--dim); }
+  .dir .q { color: var(--text); margin: 4px 0; }
+  button.go { background: var(--ok); border-color: var(--ok); color: #07120c; font-weight: 700; padding: 7px 18px; }
+  .top2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  input[type=text], input:not([type]) { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+         border-radius: 8px; padding: 6px 10px; font: inherit; flex: 1; min-width: 140px; }
+  .snaps { max-height: 150px; overflow: auto; margin-top: 8px; font-size: 13px; }
+  .snaps div { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--line); }
+  .snaps span { color: var(--dim); }
+  @media (max-width: 760px) { .top2 { grid-template-columns: 1fr; } }
+  .limits { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 10px; color: var(--dim); font-size: 13px; align-items: center; }
+  .limits select { margin-left: 6px; } .limits input[type=range] { width: 140px; vertical-align: middle; margin: 0 6px; }
+  .opts { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; color: var(--dim); font-size: 12.5px; }
+  .log { margin-top: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+         padding: 10px 12px; font: 12px/1.5 ui-monospace, Menlo, monospace; color: var(--dim);
+         max-height: 200px; overflow: auto; white-space: pre-wrap; }
+  @media (max-width: 760px) { .top { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Servo calibration</h1>
+  <span id="conn" class="pill bad">no board</span>
+  <span class="step" id="step">–</span>
+  <span id="count" class="pill">0 / 8 calibrated</span>
+  <button id="walk" class="go">▶ Walk</button>
+  <button id="stopmv">■ Stop</button>
+  <button id="flash">Flash firmware</button>
+</header>
+<main>
+  <div class="top">
+    <div class="panel">
+      <h3>The robot, seen from above</h3>
+      <svg id="robot" viewBox="0 0 280 250" role="img" aria-label="Robot top view with joint assignments"></svg>
+      <div class="legend"><span><i style="background:#3fcf8e"></i>calibrated</span><span><i style="background:#ffd23f"></i>named</span><span><i style="background:#2b343e"></i>no port yet</span></div>
+      <div class="note" style="color:var(--dim)">Click a joint to wiggle its servo.</div>
+    </div>
+    <div class="panel">
+      <h3>How to calibrate</h3>
+      <ol>
+        <li><b>Find it:</b> press <b>Wiggle</b> on a card and watch which joint on the robot twitches.</li>
+        <li><b>Name it:</b> pick that leg and joint in the card's menu.</li>
+        <li><b>Mark 90°:</b> nudge with −5 −1 +1 +5 (or the slider) until the joint is in Sesame's 90° pose, then press
+            <b>Set as 90°</b>. 90° is the same for every joint: <b>the leg straight out sideways</b>, at right angles to the body
+            (hip), with <b>the lower leg level</b>, not hanging down (knee).</li>
+        <li><b>Direction:</b> press <b>Test +20°</b>. The page says which way Sesame needs that joint to go; answer
+            whether it did. The walk uses this to mirror left and right.</li>
+        <li><b>Limits</b> (optional): move it as far as the leg may go each way and press <b>Set min</b> / <b>Set max</b>.
+            The slider then stops there.</li>
+      </ol>
+      <div class="bar">
+        <button id="center" class="prim">All to their 90° (one by one)</button>
+        <button data-mode="hold">Hold</button>
+        <button data-mode="limp">Limp</button>
+        <button data-mode="tour" class="warn">Tour</button>
+        <a href="/api/cal" download="calibration.json"><button>Download calibration.json</button></a>
+      </div>
+      <div class="note">On USB power alone, moving several servos at once cuts the USB port. Everything here moves
+        one servo at a time, except Tour.</div>
+    </div>
+  </div>
+  <div class="top2">
+    <div class="panel">
+      <h3>Moves (Sesame's)</h3>
+      <div class="bar" style="margin-top:0" id="moves"></div>
+      <div class="limits">
+        <label>Servos moving at once
+          <select id="maxmv"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></label>
+        <label>Speed <input type="range" id="speed" min="60" max="600" step="20"> <span id="speedv"></span> °/s</label>
+        <label>Amount <input type="range" id="amount" min="20" max="100" step="5"> <span id="amountv"></span> %</label>
+      </div>
+      <div class="note" id="movenote">On USB power: 1–4 servos at once. More, or faster, and the USB port may cut out
+        (replug it). On a 5 V 3 A supply you can go to 8. The walk uses your calibration: 90° marks, directions, limits.</div>
+    </div>
+    <div class="panel">
+      <h3>Former calibrations</h3>
+      <div class="bar" style="margin-top:0">
+        <input id="snapname" placeholder="name, e.g. before reseating horns" aria-label="Calibration name">
+        <button id="snapsave" class="prim">Save this calibration</button>
+      </div>
+      <div id="snaps" class="snaps"></div>
+    </div>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="log" id="log"></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const JOINTS = ["FL hip", "FL knee", "FR hip", "FR knee", "BL hip", "BL knee", "BR hip", "BR knee"];
+const LEG_NAME = {FL: "front left", FR: "front right", BL: "back left", BR: "back right"};
+// Sesame's names and which way its angle grows (docs/build-guide/assets/sesame-angle-guide.png):
+// 90 deg = the leg straight out sideways, lower leg level. Stand = hips 45/135, knees 0/180 (feet down).
+const SESAME = {
+  "FL hip": {n: "L1", plus: "toward the back"},  "FL knee": {n: "L3", plus: "foot up"},
+  "FR hip": {n: "R1", plus: "toward the front"}, "FR knee": {n: "R3", plus: "foot down"},
+  "BL hip": {n: "L2", plus: "toward the back"},  "BL knee": {n: "L4", plus: "foot down"},
+  "BR hip": {n: "R2", plus: "toward the front"}, "BR knee": {n: "R4", plus: "foot up"},
+};
+let PORTS = [1, 2, 3, 4, 5, 6, 13, 14];
+let cal = {servos: {}};
+let mode = "";
+let live = {};            // port -> last angle the board reported
+let cmdDeg = {};          // port -> last angle the page sent
+let dragging = null;
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function api(path, body) {
+  const r = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"},
+                                     body: JSON.stringify(body)} : {});
+  return r.json();
+}
+const cmd = (action, value, quiet = true) => api("/api/cmd", {action, value: String(value), quiet});
+const C = p => cal.servos[String(p)] || {};
+async function saveCal(p, fields) { cal = await api("/api/cal", {port: p, ...fields}); render(); }
+
+// ---------- moving ----------
+function clampFor(p, deg) {
+  const c = C(p), lo = c.min ?? 0, hi = c.max ?? 180;
+  return Math.max(lo, Math.min(hi, Math.max(0, Math.min(180, Math.round(deg)))));
+}
+async function ensureHold() {
+  if (mode !== "hold") { mode = "hold"; showMode(); await cmd("test", "hold"); }
+}
+const busy = {}, pending = {};
+async function moveTo(p, deg, clamp = true) {
+  deg = clamp ? clampFor(p, deg) : Math.max(0, Math.min(180, Math.round(deg)));
+  cmdDeg[p] = deg;
+  const sl = $("#sl" + p); if (sl && dragging !== p) sl.value = deg;
+  await ensureHold();
+  if (busy[p]) { pending[p] = deg; return; }
+  busy[p] = true;
+  await cmd(`s${p}_set`, deg);
+  busy[p] = false;
+  if (pending[p] !== undefined) { const d = pending[p]; delete pending[p]; moveTo(p, d, false); }
+}
+const cur = p => cmdDeg[p] ?? live[p] ?? 90;
+async function wiggle(p) {
+  const a = cur(p), card = $("#card" + p);
+  card.classList.add("flash");
+  for (const d of [12, -12, 12, -12, 0]) { await moveTo(p, a + d, false); await sleep(220); }
+  card.classList.remove("flash");
+}
+
+// ---------- direction check ----------
+const testing = {};       // port -> true while waiting for the answer
+function drawDir(p) {
+  const c = C(p), el = $("#dir" + p);
+  if (!c.joint || c.neutral === undefined) { el.innerHTML = `<button disabled style="width:100%">Test +20° (name it and set 90° first)</button>`; return; }
+  const want = SESAME[c.joint].plus;
+  if (testing[p]) {
+    el.innerHTML = `<div class="q">${SESAME[c.joint].n} should have moved <b>${want}</b>. Did it?</div>
+      <div class="row" style="margin-top:0"><button class="prim" data-p="${p}" data-dir="yes">Yes, ${want}</button>
+      <button data-p="${p}" data-dir="no">No, the other way</button></div>`;
+  } else {
+    el.innerHTML = `<button data-p="${p}" data-act="dirtest" style="width:100%">Test +20° (should go ${want})</button>`;
+  }
+}
+async function dirTest(p) {
+  const c = C(p);
+  testing[p] = true; drawDir(p);
+  await moveTo(p, c.neutral, false); await sleep(300);
+  await moveTo(p, c.neutral + 20, false);        // the raw +20: the answer says if raw + is Sesame's +
+}
+async function dirAnswer(p, yes) {
+  delete testing[p];
+  await moveTo(p, C(p).neutral, false);
+  saveCal(p, {reversed: !yes, dirChecked: true});
+}
+
+// ---------- the robot drawing ----------
+// body centre (140,125); each leg: hip on the body corner, knee further out
+const LEGS = {
+  FL: {hip: [92, 70],  knee: [40, 38]},
+  FR: {hip: [188, 70], knee: [240, 38]},
+  BL: {hip: [92, 180], knee: [40, 212]},
+  BR: {hip: [188, 180], knee: [240, 212]},
+};
+function portOf(joint) {
+  for (const [p, c] of Object.entries(cal.servos)) if (c.joint === joint) return +p;
+  return null;
+}
+function drawRobot() {
+  let s = `<rect x="88" y="58" width="104" height="134" rx="16" fill="#1f262e" stroke="#3a4552"/>
+    <path d="M140 40 l-9 12 h18 z" fill="#8b98a5"/><text x="140" y="34" text-anchor="middle" style="fill:#8b98a5">FRONT</text>
+    <text x="140" y="129" text-anchor="middle" style="fill:#8b98a5">body</text>`;
+  for (const [leg, g] of Object.entries(LEGS)) {
+    s += `<line x1="${g.hip[0]}" y1="${g.hip[1]}" x2="${g.knee[0]}" y2="${g.knee[1]}" stroke="#3a4552" stroke-width="7" stroke-linecap="round"/>`;
+    for (const part of ["hip", "knee"]) {
+      const joint = `${leg} ${part}`, p = portOf(joint), c = p ? C(p) : {};
+      const done = p && c.neutral !== undefined && c.dirChecked;
+      const fill = done ? "#3fcf8e" : p ? "#ffd23f" : "#2b343e";
+      const [x, y] = g[part];
+      s += `<text x="${x}" y="${y + (leg.startsWith("F") ? 28 : -20)}" text-anchor="middle" style="fill:#5d6b78;font-weight:400">${SESAME[joint].n}</text>`;
+      s += `<g class="j" data-joint="${joint}"><circle cx="${x}" cy="${y}" r="15" fill="${fill}" stroke="#0f1216" stroke-width="2"/>
+        <text x="${x}" y="${y + 3}" text-anchor="middle" style="fill:${p ? "#0f1216" : "#8b98a5"}">${p ? "P" + p : "?"}</text></g>`;
+      const lx = x + (leg.endsWith("L") ? -1 : 1) * (part === "knee" ? 0 : 0);
+      s += `<text x="${lx}" y="${y + (leg.startsWith("F") ? -20 : 28)}" text-anchor="middle" style="fill:#8b98a5;font-weight:400">${part}</text>`;
+    }
+  }
+  $("#robot").innerHTML = s;
+}
+$("#robot").addEventListener("click", e => {
+  const g = e.target.closest(".j"); if (!g) return;
+  const p = portOf(g.dataset.joint);
+  if (p) { const c = $("#card" + p); c.scrollIntoView({behavior: "smooth", block: "center"}); wiggle(p); }
+});
+
+// ---------- the cards ----------
+function dialSvg(p) {
+  let ticks = "";
+  for (let d = 0; d <= 180; d += 15) {
+    const a = Math.PI * (1 - d / 180), r1 = d % 45 ? 49 : 45;
+    ticks += `<line x1="${60 + r1 * Math.cos(a)}" y1="${58 - r1 * Math.sin(a)}" x2="${60 + 53 * Math.cos(a)}" y2="${58 - 53 * Math.sin(a)}" stroke="#3a4552" stroke-width="${d % 45 ? 1 : 2}"/>`;
+  }
+  return `<svg class="dial" viewBox="0 0 120 64" aria-hidden="true">
+    <path d="M7 58 A53 53 0 0 1 113 58" fill="none" stroke="#252d36" stroke-width="7"/>
+    <path id="rng${p}" fill="none" stroke="#2a4a6b" stroke-width="7"/>
+    ${ticks}
+    <line id="neu${p}" x1="60" y1="58" x2="60" y2="2" stroke="#3fcf8e" stroke-width="2.5" opacity="0"/>
+    <line id="nd${p}" x1="60" y1="58" x2="60" y2="14" stroke="#ffd23f" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="60" cy="58" r="5.5" fill="#ffd23f"/>
+  </svg>`;
+}
+const pt = (deg, r) => [60 + r * Math.cos(Math.PI * (1 - deg / 180)), 58 - r * Math.sin(Math.PI * (1 - deg / 180))];
+function needle(el, deg, r) { const [x, y] = pt(deg, r); el.setAttribute("x2", x); el.setAttribute("y2", y); }
+
+function build() {
+  $("#grid").innerHTML = PORTS.map(p => `
+    <div class="card" id="card${p}">
+      <div class="ch"><b>Port ${p}</b>
+        <select id="jt${p}" aria-label="Port ${p} joint">
+          <option value="">which joint?</option>
+          ${JOINTS.map(j => `<option value="${j}">${LEG_NAME[j.slice(0, 2)]} ${j.slice(3)} (${SESAME[j].n})</option>`).join("")}
+        </select>
+        <span class="badge" id="bd${p}">new</span></div>
+      ${dialSvg(p)}
+      <div class="read"><span class="big" id="jd${p}">–</span><span class="sm" id="raw${p}">raw –</span></div>
+      <input type="range" min="0" max="180" step="1" value="90" id="sl${p}" aria-label="Port ${p} angle">
+      <div class="row">
+        <button data-p="${p}" data-nudge="-5">−5</button><button data-p="${p}" data-nudge="-1">−1</button>
+        <button data-p="${p}" data-nudge="1">+1</button><button data-p="${p}" data-nudge="5">+5</button>
+      </div>
+      <div class="row">
+        <button data-p="${p}" data-act="wiggle">Wiggle</button>
+        <button data-p="${p}" data-act="set90" class="prim">Set as 90°</button>
+        <button data-p="${p}" data-act="go90">Go to 90°</button>
+      </div>
+      <div class="row">
+        <button data-p="${p}" data-act="setmin">Set min</button>
+        <button data-p="${p}" data-act="setmax">Set max</button>
+        <button data-p="${p}" data-act="clear">Clear limits</button>
+      </div>
+      <div class="dir" id="dir${p}"></div>
+      <div class="opts"><span id="dirst${p}">direction not checked</span><span id="lim${p}">limits 0–180</span></div>
+    </div>`).join("");
+  for (const p of PORTS) {
+    const sl = $("#sl" + p);
+    sl.addEventListener("pointerdown", () => dragging = p);
+    sl.addEventListener("input", () => moveTo(p, +sl.value));
+    $("#jt" + p).addEventListener("change", async e => {
+      const j = e.target.value;
+      // a joint belongs to one port: take it off any other
+      for (const [q, c] of Object.entries(cal.servos))
+        if (+q !== p && c.joint === j && j) await api("/api/cal", {port: +q, joint: ""});
+      saveCal(p, {joint: j, dirChecked: false});
+    });
+  }
+  window.addEventListener("pointerup", () => dragging = null);
+}
+
+// joint angle: the angle from the servo's own 90 deg mark, as the joint sees it
+function jointDeg(p, raw) {
+  const c = C(p); if (c.neutral === undefined) return null;
+  return Math.round((c.reversed ? -1 : 1) * (raw - c.neutral) + 90);
+}
+
+function render() {
+  let done = 0;
+  for (const p of PORTS) {
+    const c = C(p), raw = live[p];
+    const has90 = c.neutral !== undefined, named = !!c.joint, dirOk = c.dirChecked === true;
+    const full = has90 && named && dirOk;
+    if (full) done++;
+    $("#jt" + p).value = c.joint || "";
+    drawDir(p);
+    const bd = $("#bd" + p);
+    bd.textContent = full ? "calibrated" : has90 && named ? "check direction" : has90 ? "90° set" : named ? "named" : "new";
+    bd.className = "badge" + (full ? " ok" : "");
+    $("#card" + p).classList.toggle("done", full);
+    $("#dirst" + p).textContent = dirOk ? (c.reversed ? "direction: reversed" : "direction: normal") : "direction not checked";
+    const lo = c.min ?? 0, hi = c.max ?? 180;
+    $("#sl" + p).min = lo; $("#sl" + p).max = hi;
+    $("#lim" + p).textContent = `limits ${lo}–${hi}`;
+    const [x1, y1] = pt(lo, 53), [x2, y2] = pt(hi, 53);
+    $("#rng" + p).setAttribute("d", `M${x1} ${y1} A53 53 0 0 1 ${x2} ${y2}`);
+    const neu = $("#neu" + p);
+    if (has90) { needle(neu, c.neutral, 56); neu.setAttribute("opacity", "1"); } else neu.setAttribute("opacity", "0");
+    if (raw === undefined || raw === null) { $("#jd" + p).textContent = "–"; $("#raw" + p).textContent = "raw –"; continue; }
+    if (raw < 0) { $("#jd" + p).textContent = "limp"; $("#raw" + p).textContent = ""; continue; }
+    needle($("#nd" + p), raw, 46);
+    const jd = jointDeg(p, raw);
+    $("#jd" + p).textContent = jd === null ? `${raw}°` : `${jd}°`;
+    $("#raw" + p).innerHTML = jd === null ? "raw (no 90° yet)" : `raw ${raw}° · 90° at ${c.neutral}°`;
+    if (dragging !== p && mode !== "hold") $("#sl" + p).value = raw;
+  }
+  $("#count").textContent = `${done} / ${PORTS.length} calibrated`;
+  $("#count").className = "pill" + (done === PORTS.length ? " ok" : "");
+  drawRobot();
+}
+
+function showMode() {
+  document.querySelectorAll("[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === mode));
+}
+
+document.addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const p = b.dataset.p ? +b.dataset.p : null;
+  if (b.dataset.nudge) return moveTo(p, cur(p) + +b.dataset.nudge, false);
+  if (b.dataset.act === "wiggle") return wiggle(p);
+  if (b.dataset.act === "dirtest") return dirTest(p);
+  if (b.dataset.dir) return dirAnswer(p, b.dataset.dir === "yes");
+  if (b.dataset.act === "set90") return saveCal(p, {neutral: cur(p), dirChecked: false});
+  if (b.dataset.act === "go90") return moveTo(p, C(p).neutral ?? 90, false);
+  if (b.dataset.act === "setmin") return saveCal(p, {min: cur(p)});
+  if (b.dataset.act === "setmax") return saveCal(p, {max: cur(p)});
+  if (b.dataset.act === "clear") return saveCal(p, {min: 0, max: 180});
+  if (b.dataset.mode) {
+    mode = b.dataset.mode; showMode(); cmdDeg = {};
+    return cmd("test", b.dataset.mode, false);
+  }
+  if (b.id === "center") {
+    b.disabled = true;
+    for (const q of PORTS) { await moveTo(q, C(q).neutral ?? 90, false); await sleep(350); }
+    b.disabled = false;
+  }
+  if (b.id === "flash") return api("/api/flash", {});
+});
+
+async function poll() {
+  try {
+    const s = await api("/api/state");
+    const c = $("#conn");
+    c.textContent = s.flash.running ? "flashing…" : s.connected ? (s.live ? "board live" : "connected") : "no board";
+    c.className = "pill " + (s.connected && !s.flash.running ? "ok" : "bad");
+    $("#flash").disabled = s.flash.running;
+    $("#step").textContent = s.step || "–";
+    if (!s.live) live = {};
+    else s.ports.forEach((p, i) => live[p] = s.angles[i]);
+    if (s.step && s.step.startsWith("ready")) { if (mode === "hold") { mode = ""; cmdDeg = {}; showMode(); } }
+    for (const p of PORTS) $("#card" + p).classList.toggle("hot", (s.step || "").startsWith(`port ${p}`));
+    render();
+    const log = $("#log"), atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 4;
+    log.textContent = s.log.join("\n") + (s.flash.output ? "\n" + s.flash.output : "");
+    if (atEnd) log.scrollTop = log.scrollHeight;
+  } catch (e) {
+    $("#conn").textContent = "server stopped"; $("#conn").className = "pill bad";
+  }
+  setTimeout(poll, 250);
+}
+// ---------- moves ----------
+const MOVES = [["walk", "Walk"], ["back", "Walk back"], ["left", "Turn left"], ["right", "Turn right"],
+  ["stand", "Stand"], ["rest", "Rest"], ["wave", "Wave"], ["dance", "Dance"], ["bow", "Bow"],
+  ["pushup", "Push-ups"], ["crab", "Crab"], ["shake", "Shake"], ["cute", "Cute"]];
+$("#moves").innerHTML = MOVES.map(([m, l]) => `<button data-move="${m}"${m === "walk" ? ' class="go"' : ""}>${l}</button>`).join("");
+async function go(m) {
+  const named = Object.values(cal.servos).filter(c => c.joint).length;
+  const missing = JOINTS.filter(j => !portOf(j)).map(j => SESAME[j].n);
+  if (missing.length && !confirm(`${missing.join(", ")} ${missing.length > 1 ? "have" : "has"} no servo: ` +
+      `${missing.length > 1 ? "those joints" : "that joint"} won't move. Play "${m}" anyway?`)) return;
+  mode = "move"; showMode(); cmdDeg = {};
+  await api("/api/go", {move: m});
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.move) go(b.dataset.move);
+  if (b.id === "walk") go("walk");
+  if (b.id === "stopmv") go("stop");
+});
+
+// ---------- how many servos move at once ----------
+async function loadSettings() {
+  const st = await api("/api/settings");
+  $("#maxmv").value = st.max_moving; $("#speed").value = st.speed; $("#speedv").textContent = st.speed;
+  $("#amount").value = st.amount; $("#amountv").textContent = st.amount;
+}
+$("#maxmv").addEventListener("change", e => api("/api/settings", {max_moving: +e.target.value}));
+$("#speed").addEventListener("input", e => $("#speedv").textContent = e.target.value);
+$("#speed").addEventListener("change", e => api("/api/settings", {speed: +e.target.value}));
+$("#amount").addEventListener("input", e => $("#amountv").textContent = e.target.value);
+$("#amount").addEventListener("change", e => api("/api/settings", {amount: +e.target.value}));
+
+// ---------- former calibrations ----------
+async function loadSnaps() {
+  const list = await api("/api/snapshots");
+  $("#snaps").innerHTML = list.length ? list.map(f => `<div><b>${f.file.replace(/\.json$/, "")}</b>
+    <span>${f.joints} joints</span><button data-restore="${f.file}">Restore</button></div>`).join("")
+    : `<span>None saved yet.</span>`;
+}
+$("#snapsave").addEventListener("click", async () => {
+  await api("/api/snapshot", {name: $("#snapname").value || "calibration"});
+  $("#snapname").value = ""; loadSnaps();
+});
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-restore]"); if (!b) return;
+  if (!confirm(`Restore ${b.dataset.restore}? The calibration you have now is kept as "before restore".`)) return;
+  await api("/api/restore", {file: b.dataset.restore});
+  cal = await api("/api/cal"); render(); loadSnaps();
+});
+
+(async () => { cal = await api("/api/cal"); build(); render(); showMode(); poll(); loadSnaps(); loadSettings(); })();
+</script>
+</body>
+</html>

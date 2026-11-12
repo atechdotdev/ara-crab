@@ -9,7 +9,7 @@ in a visor at the front shows Sesame's face, and an Atech motion sensor keeps th
 Nothing under Sesame's top cover changes. The top cover is replaced by a **deck** that holds the board flat over
 the legs and a **lid** that closes it. Both come from Atech Atelier's "Sesame walker".
 
-**[Assembly tutorial](#assemble)** · [Animated 3D assembly](docs/assembly/index.html) (download, open in a browser) · [v6.3 overview (PDF)](docs/atech_crab_v6.3_overview.pdf) · [older guide (PDF)](docs/atech_crab_assembly.pdf) · [video (MP4, 33 s)](docs/atech_crab_assembly.mp4)
+**[Assembly tutorial](#assemble)** · [Animated 3D assembly](docs/assembly/index.html) (download, open in a browser) · [assembly guide (PDF)](docs/atech_crab_v6.3_assembly.pdf) · [assembly video (MP4, 50 s)](docs/atech_crab_v6.3_assembly.mp4) · [v6.3 overview (PDF)](docs/atech_crab_v6.3_overview.pdf) · [older v4 guide (PDF)](docs/atech_crab_assembly.pdf)
 
 ## Status
 
@@ -26,9 +26,9 @@ Print and test-fit the deck on the frame, with the servos in, before you print m
 
 | Sesame | Atech-crab |
 |---|---|
-| ESP32 + distro board (or PCA9685) | Atech 14-port board (ESP32-S3). Servos on ports 2–5, two per port |
-| 128×64 OLED | Atech screen module, ports 10+11, in a front visor |
-| — | Atech motion sensor (icm40608), port 13: heading hold while walking, 90° turns |
+| ESP32 + distro board (or PCA9685) | Atech 14-port board (ESP32-S3). Servos on ports 2, 3, 10 and 11, two per port |
+| 128×64 OLED | Atech screen module, ports 13+14, in a front visor |
+| — | Atech motion sensor (icm40608), port 4: heading hold while walking, 90° turns |
 | USB on the ESP32 | Atech USB-C module, port 8, at the back |
 | Top cover | Deck (three printed parts that snap together, plus screws) + lid |
 | Arduino IDE | `pip install atech`, then `atech upload` |
@@ -73,7 +73,7 @@ and `print/check.py`.
 
 Watch it first: the [animated 3D assembly](docs/assembly/index.html) plays every step below, with the hooks
 clicking and the screws driven in (download it and open it in a browser; switch the screws off to see the
-deck held by its hooks alone). The [overview PDF](docs/atech_crab_v6.3_overview.pdf) has the same steps on paper.
+deck held by its hooks alone), or the [video](docs/atech_crab_v6.3_assembly.mp4). The [assembly guide (PDF)](docs/atech_crab_v6.3_assembly.pdf) has the same steps on paper, with the wiring.
 
 You need: the 14 printed parts and the 16 wire parts, the hardware above, a PH0 screwdriver.
 
@@ -122,8 +122,8 @@ back of the spine, left and right behind the head (front left of the spine has n
 
 ### 6. Board, wiring, lid and bobbins
 
-1. The board on the four posts; the USB-C module on port 8, the motion sensor on port 13, the screen's cable
-   to ports 10+11.
+1. The board on the four posts; the USB-C module on port 8, the motion sensor on port 4, the screen's cable
+   to ports 13+14.
 2. Wire the servos ([below](#wire)): put each port's three jumpers in a **port jumper holder** and plug the
    holder in; join each servo plug to its jumpers inside a **servo plug sleeve**.
 3. The lid, with **3 screws**; their heads sink flush in its top.
@@ -138,8 +138,8 @@ back of the spine, left and right behind the head (front left of the spine has n
 |---|---|---|---|
 | 2 | front left | L1 hip | L3 knee |
 | 3 | front right | R1 hip | R3 knee |
-| 4 | back left | L2 hip | L4 knee |
-| 5 | back right | R2 hip | R4 knee |
+| 10 | back left | L2 hip | L4 knee |
+| 11 | back right | R2 hip | R4 knee |
 
 Each port is a 6-pin header: 1 +12 V, 2 +5 V, 3 +3.3 V, 4 GND, 5 line A, 6 line B. Run the signal and GND
 jumpers out through the slot at each port. Both sides have slots and lead notches (ports 2–6 on the right,
@@ -220,9 +220,10 @@ atech/
 │   └── review.png
 └── docs/
     ├── assembly/               the animated 3D assembly (index.html) and the tutorial's pictures
+    ├── atech_crab_v6.3_assembly.pdf  the assembly guide
+    ├── atech_crab_v6.3_assembly.mp4  the assembly video
     ├── atech_crab_v6.3_overview.pdf
-    ├── atech_crab_assembly.pdf the older (v4) guide
-    ├── atech_crab_assembly.mp4
+    ├── atech_crab_assembly.pdf the older (v4) guide and video (.mp4)
     └── img/
 ```
 

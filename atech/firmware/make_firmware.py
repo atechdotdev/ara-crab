@@ -101,21 +101,21 @@ board: 14port
 # 8 mm ahead of the hip axes. The servos (8 x MG90S, 180 deg) plug straight into the ports on
 # jumper wires, two per port, run under the board through the spine:
 #   port 2: L1 (front-left hip) on Line A, L3 (its knee) on Line B
-#   port 3: R1 / R3 (front-right)    port 4: L2 / L4 (rear-left)    port 5: R2 / R4 (rear-right)
+#   port 3: R1 / R3 (front-right)    port 10: L2 / L4 (rear-left)    port 11: R2 / R4 (rear-right)
 # Red wires to the port's +5V, brown to GND, orange to the line. +12V is next to +5V:
 # check which end of the header is +12V on your board before you wire anything.
 # Feed the servos from a 5 V 3 A supply (Sesame's buck converter), grounds joined.
-# USB-C module on port 8. The screen sits on a cable from ports 10+11, upright in the front
+# USB-C module on port 8. The screen sits on a cable from ports 13+14, upright in the front
 # visor, its connector edge down (the firmware turns the image 180 deg); the motion sensor
-# on port 13.
+# on port 4.
 modules_path: ./my_modules
 modules:
   - {id: mg90s_pair, instance: fl,    port: 2}
   - {id: mg90s_pair, instance: fr,    port: 3}
-  - {id: mg90s_pair, instance: bl,    port: 4}
-  - {id: mg90s_pair, instance: br,    port: 5}
-  - {id: st7735_tft, instance: face,  ports: [10, 11]}
-  - {id: icm40608,   instance: imu,   port: 13}
+  - {id: mg90s_pair, instance: bl,    port: 10}
+  - {id: mg90s_pair, instance: br,    port: 11}
+  - {id: st7735_tft, instance: face,  ports: [13, 14]}
+  - {id: icm40608,   instance: imu,   port: 4}
 """
 
 

@@ -1,0 +1,39 @@
+id: mg90s_one
+name: "One MG90S servo on jumper wires"
+category: motor
+interface: gpio
+size: 1
+description: |
+  Not an Atech module: one MG90S servo (metal gear, 180 deg) wired straight to a port with
+  jumpers: signal on Line A (pin 5), red to +5V (pin 2), brown to GND (pin 4). Line B is
+  left free. Pin 1 next to +5V is +12V: a red wire one pin over destroys the servo.
+  Uses one of the ESP32-S3's 8 LEDC channels (50 Hz, 14-bit): 8 servos per project at most.
+  Pulses are the MG90S's: 0..180 deg = 500..2400 us, never outside it.
+
+driver:
+  header: mg90s_one.h
+  source: mg90s_one.cpp
+  class_name: Mg90sOne
+
+templates:
+  globals: |
+    Mg90sOne {{ instance }}({{ pin_a }});
+  setup: |
+    {{ instance }}.begin();
+  loop: ""
+
+actions:
+  - key: "{{ instance }}_set"
+    value_type: float
+    description: "Move the servo to an angle, 0..180 deg."
+    handler: |
+      {{ instance }}.write(value.toFloat());
+
+events: []
+lib_deps: []
+
+usage: |
+  {{ instance }}.write(90);        // to the middle, 0..180 deg
+  {{ instance }}.writeUs(1500);    // or the pulse itself, 500..2400 us
+  {{ instance }}.detach();         // stop pulsing: limp
+  float a = {{ instance }}.read(); // the last angle commanded

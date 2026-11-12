@@ -23,6 +23,7 @@ PROFILES = APP / "Resources/profiles/BBL"
 HERE = pathlib.Path(__file__).parent
 STL = sorted((HERE / "stl").glob("*.stl"))
 NAME = "atech_crab"
+NOZZLE = "1"         # --left: a two-nozzle printer prints with its left nozzle (fed by the Left AMS)
 PROJECT = False      # --project: an unsliced Bambu Studio project .3mf (parts placed, settings in), to share
 
 PRINTERS = {
@@ -174,7 +175,7 @@ def slice_one(printer, fil, out_dir):
         paths = {}
         # a two-nozzle printer (H2D) refuses "auto" nozzle choice from the CLI: one filament, nozzle 1
         dual = len(preset("machine", machine).get("extruder_printable_area") or []) > 1
-        mextra = {"filament_map_mode": "Manual", "filament_map": ["1"]} if dual else None
+        mextra = {"filament_map_mode": "Manual", "filament_map": [NOZZLE]} if dual else None
         for kind, name, extra in (("machine", machine, mextra), ("process", process, PRINT_OVERRIDES),
                                   ("filament", filament, None)):
             p = tmp / f"{kind}.json"
@@ -200,6 +201,8 @@ def slice_one(printer, fil, out_dir):
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    if "--left" in args:
+        args.remove("--left"); NOZZLE = "2"
     if "--project" in args:
         args.remove("--project"); PROJECT = True
     for flag in ("--parts", "--name"):
