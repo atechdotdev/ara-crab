@@ -9,7 +9,7 @@ in a visor at the front shows Sesame's face, and an Atech motion sensor keeps th
 Nothing under Sesame's top cover changes. The top cover is replaced by a **deck** that holds the board flat over
 the legs and a **lid** that closes it. Both come from Atech Atelier's "Sesame walker".
 
-**[Assembly tutorial](#assemble)** · [Animated 3D assembly](docs/assembly/index.html) (download, open in a browser) · [assembly guide (PDF)](docs/atech_crab_v6.3_assembly.pdf) · [assembly video (MP4, 50 s)](docs/atech_crab_v6.3_assembly.mp4) · [v6.3 overview (PDF)](docs/atech_crab_v6.3_overview.pdf) · [older v4 guide (PDF)](docs/atech_crab_assembly.pdf)
+**[Assembly tutorial](#assemble)** · [Animated 3D assembly](docs/assembly/index.html) (download, open in a browser) · [assembly guide (PDF)](docs/atech_crab_v6.3_assembly.pdf) · [assembly video (MP4, 50 s)](docs/atech_crab_v6.3_assembly.mp4) · [v6.3 overview (PDF)](docs/atech_crab_v6.3_overview.pdf)
 
 ## Status
 
@@ -223,7 +223,6 @@ atech/
     ├── atech_crab_v6.3_assembly.pdf  the assembly guide
     ├── atech_crab_v6.3_assembly.mp4  the assembly video
     ├── atech_crab_v6.3_overview.pdf
-    ├── atech_crab_assembly.pdf the older (v4) guide and video (.mp4)
     └── img/
 ```
 

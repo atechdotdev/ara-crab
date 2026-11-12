@@ -167,7 +167,7 @@ one holder first and try it in a port before printing the rest.
 3. **Deck to frame:** the 4 corner screws go up from under the frame (head pocket 6.0 mm). Two more can go down
    from above: through the pads at the foot of the spine's front and back walls (reach them through the opening
    in the floor, before the board goes in).
-3. Continue with the [assembly guide (PDF, v6)](../docs/atech_crab_assembly_v6.pdf).
+3. Continue with the [assembly guide (PDF, v6.3)](../docs/atech_crab_v6.3_assembly.pdf).
 
 **Screws: one kind for the whole body,** the kit's **M2 × 6 mm pan-head self-tapping** (4.5 mm head): 4 + 2
 deck to frame, 4 deck plate to spine and head, 3 lid (their heads sink flush in the lid), 2 bottom cover, and

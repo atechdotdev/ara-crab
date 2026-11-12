@@ -5,10 +5,12 @@ plate, printed on its side (8.00 mm wide). The horns fell out, so this adds a sk
 wall: the pocket outline, slice by slice, is shrunk by SKIN mm all round (width and length shrink by
 2 x SKIN). The lead-in chamfer at the mouth, the screw holes and the rest of the part are unchanged.
 
-    python3 atech/cad/tighten_horn_pockets.py            # the leg STLs, from print/stl_legs_orig/
+    python3 atech/cad/tighten_horn_pockets.py            # the leg STLs, from Sesame's originals (git commit 8cd7d9d)
     python3 atech/cad/tighten_horn_pockets.py --coupon   # also the fit-test piece
 """
+import io
 import os
+import subprocess
 import sys
 
 import numpy as np
@@ -17,7 +19,7 @@ from shapely.geometry import Polygon
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PRINT = os.path.join(HERE, "..", "print")
-SRC = os.path.join(PRINT, "stl_legs_orig")
+ORIG = "8cd7d9d"   # the last commit with Sesame's untightened legs in print/stl/
 OUT = os.path.join(PRINT, "stl")
 SKIN = {"flat": 0.10, "side": 0.15}     # mm per wall: flat 7.52 -> 7.32 wide, side 8.00 -> 7.70 wide
 STEP = 0.1
@@ -65,8 +67,15 @@ def skin_mesh(n, rows, skin):
     return trimesh.boolean.union(parts, engine="manifold")
 
 
+def original(name):
+    """Sesame's untightened leg, read from git (commit ORIG)."""
+    data = subprocess.run(["git", "show", f"{ORIG}:atech/print/stl/{name}"], cwd=HERE,
+                          capture_output=True, check=True).stdout
+    return trimesh.load(io.BytesIO(data), file_type="stl")
+
+
 def tighten(name, skin=SKIN, src=None):
-    m = trimesh.load(src or os.path.join(SRC, name))
+    m = trimesh.load(src) if src else original(name)
     pockets = find_pockets(m)
     log = []
     for n, kind, w0, rows in pockets:
